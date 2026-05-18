@@ -1,0 +1,8 @@
+# Managed-component dependencies. arduino-esp32 is the big one — it
+# pulls in the Arduino abstraction layer (LittleFS, SD_MMC, WiFi,
+# Preferences, BLEDevice/NimBLEDevice, Wire, etc.) so the host code
+# can keep using the Arduino-style APIs it already calls. Pinned to
+# 3.x to match the IDF v5.5 base.
+dependencies:
+  espressif/arduino-esp32:
+    version: "^3.3.1"

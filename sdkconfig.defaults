@@ -1,0 +1,122 @@
+# sdkconfig defaults for the ESP-IDF port. Each section maps back to a
+# specific arduino-cli FQBN setting or a tuning we couldn't reach from
+# arduino-cli. Edit via `idf.py menuconfig` after `idf.py reconfigure`;
+# changes flow back through this file when saved via "Save as default".
+
+# ---------------------------------------------------------------------------
+# Target + flash
+# ---------------------------------------------------------------------------
+# FQBN equiv: esp32:esp32:esp32s3
+CONFIG_IDF_TARGET="esp32s3"
+
+# FQBN equiv: FlashSize=16M
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="16MB"
+# QIO works on the WROOM-1U-N16R16V module; matches Arduino default.
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+
+# FQBN equiv: PartitionScheme=custom (partitions.csv)
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_PARTITION_TABLE_FILENAME="partitions.csv"
+
+# ---------------------------------------------------------------------------
+# PSRAM — FQBN equiv: PSRAM=opi. Box-3 module is WROOM-1U-N16R16V with
+# 16 MB OCTAL PSRAM at 1.8 V. PSRAM_SPEED_80M matches the Arduino default.
+# ---------------------------------------------------------------------------
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_TYPE_AUTO=y
+CONFIG_SPIRAM_SPEED_80M=y
+# Keep PSRAM allocation as opt-in (heap_caps_malloc(... MALLOC_CAP_SPIRAM))
+# so internal DRAM stays the default for normal allocations — that matches
+# the arduino-cli build's behavior. Sprite buffers and other big things
+# explicitly request PSRAM via MALLOC_CAP_SPIRAM in the host code.
+CONFIG_SPIRAM_USE_MALLOC=n
+CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+
+# ---------------------------------------------------------------------------
+# USB serial — FQBN equiv: CDCOnBoot=cdc. Box-3 has no UART bridge;
+# Serial.print() routes over the native USB-Serial-JTAG.
+# ---------------------------------------------------------------------------
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+
+# ---------------------------------------------------------------------------
+# DRAM budget tuning — this is the whole reason we moved to ESP-IDF.
+# The arduino-cli defaults pre-allocate way more than we need for WiFi,
+# NimBLE, and AsyncTCP, leaving the heap pressure that caused intermittent
+# malloc failures on the Box-3 build. Numbers below are conservative for
+# a single-client local file manager + a 2-peer BLE HID host.
+# ---------------------------------------------------------------------------
+
+# --- WiFi: keep static pool small ---
+# Default RX is 10, TX is 32. We're not a high-bandwidth station.
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=6
+CONFIG_ESP_WIFI_STATIC_TX_BUFFER_NUM=6
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=8
+CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=8
+CONFIG_ESP_WIFI_AMPDU_TX_ENABLED=n
+CONFIG_ESP_WIFI_AMPDU_RX_ENABLED=n
+
+# --- lwIP: trim sockets / TCPIP task ---
+CONFIG_LWIP_MAX_SOCKETS=8
+# IDF v5.5 renamed CONFIG_LWIP_TCP_RCV_BUF_DEFAULT to CONFIG_LWIP_TCP_WND_DEFAULT.
+CONFIG_LWIP_TCP_WND_DEFAULT=4096
+CONFIG_LWIP_TCP_SND_BUF_DEFAULT=4096
+CONFIG_LWIP_TCPIP_TASK_STACK_SIZE=2560
+
+# --- NimBLE: IDF's host stack + NimBLE-Arduino wrappers ---
+# In practice the previously feared double-init of esp_bt_controller_init
+# doesn't trigger with this build of NimBLE-Arduino — NimBLEDevice::init
+# checks the state before re-initializing the controller. We keep IDF's
+# bundled NimBLE host enabled and use NimBLE-Arduino purely for its
+# Arduino-style C++ wrappers. The alternative (compile NimBLE-Arduino's
+# full bundled NimBLE stack with BT_NIMBLE_ENABLED=n) hit unresolved
+# symbols against IDF's transport layer (ble_transport_ll_init).
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=2
+CONFIG_BT_NIMBLE_MAX_BONDS=4
+CONFIG_BT_NIMBLE_MAX_CCCDS=8
+
+# --- AsyncTCP queue ---
+# CONFIG_ASYNC_TCP_QUEUE_SIZE is a plain `#define` in AsyncTCP.h (not a
+# Kconfig), so it's set as a target_compile_definitions in the AsyncTCP
+# component CMakeLists.txt rather than here.
+
+# ---------------------------------------------------------------------------
+# CPU + scheduling
+# ---------------------------------------------------------------------------
+# arduino-esp32 default: 240 MHz. Box-3 module supports it.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# FreeRTOS tick rate — Arduino bundles 1000 Hz; keeping it matches the
+# audio task scheduling assumptions.
+CONFIG_FREERTOS_HZ=1000
+
+# Task watchdog — keep both CPU IDLE checks enabled. Our loop() yields
+# 1 tick (~1ms) at the end of each iteration via delay(1), so IDLE1
+# actually gets to run and reset its WDT subscription. If loop() ever
+# stops yielding (infinite loop in user code, etc), the WDT will fire
+# — which is the behavior we want.
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=y
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=y
+
+# ---------------------------------------------------------------------------
+# Arduino-as-component
+# ---------------------------------------------------------------------------
+# Let arduino-esp32 spin its own loop task that calls setup() then loop()
+# repeatedly — same lifecycle as the arduino-cli build. With this on we
+# don't need a hand-written app_main(): the ported .ino's setup() and
+# loop() functions are invoked by the Arduino framework.
+CONFIG_AUTOSTART_ARDUINO=y
+# Run loop() on core 1 to match Arduino's default (frees core 0 for
+# WiFi + BLE host).
+CONFIG_ARDUINO_RUNNING_CORE=1
+CONFIG_ARDUINO_EVENT_RUNNING_CORE=1
+# 16 KB loop task stack — same as Arduino default. The .ino's setup
+# touches LittleFS / SD / display init / BLE init / audio start, none
+# individually deep but the cumulative call chain is non-trivial.
+CONFIG_ARDUINO_LOOP_STACK_SIZE=16384

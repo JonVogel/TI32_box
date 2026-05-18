@@ -1,0 +1,11 @@
+# Name,   Type, SubType, Offset,  Size, Flags
+nvs,      data, nvs,     0x9000,  0x5000,
+otadata,  data, ota,     0xe000,  0x2000,
+app0,     app,  ota_0,   0x10000, 0x330000,
+app1,     app,  ota_1,   0x340000,0x330000,
+# Label stays "spiffs" because arduino-esp32's LittleFS.begin() default
+# partitionLabel is "spiffs" (legacy from the SPIFFS era — see
+# LittleFS.h in arduino-esp32 v3.3). Subtype is "littlefs" (0x83) so
+# IDF v5.5's esp_partition layer treats it as a native LittleFS region.
+spiffs,   data, littlefs,0x670000,0x180000,
+coredump, data, coredump,0x7F0000,0x10000,
