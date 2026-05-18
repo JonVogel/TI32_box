@@ -94,9 +94,61 @@ static inline int bleKbRead()
 #define HID_KEY_UP         0x52
 
 #define HID_MOD_LSHIFT  0x02
+#define HID_MOD_LALT    0x04
 #define HID_MOD_RSHIFT  0x20
+#define HID_MOD_RALT    0x40
 
 static bool bleKbCapsLock = false;
+
+// Digits 2..9 are in the HID block at HID_KEY_1+N, but only 1 and 0 are
+// named above. Expose the rest so the FCTN keymap below can reference
+// them by name.
+#define HID_KEY_2  (HID_KEY_1 + 1)    // 0x1F
+#define HID_KEY_3  (HID_KEY_1 + 2)    // 0x20
+#define HID_KEY_4  (HID_KEY_1 + 3)    // 0x21
+#define HID_KEY_5  (HID_KEY_1 + 4)    // 0x22
+#define HID_KEY_6  (HID_KEY_1 + 5)    // 0x23
+#define HID_KEY_7  (HID_KEY_1 + 6)    // 0x24
+#define HID_KEY_8  (HID_KEY_1 + 7)    // 0x25
+#define HID_KEY_9  (HID_KEY_1 + 8)    // 0x26
+
+// HID keycodes for the letters we use as FCTN aliases. The block at
+// HID_KEY_A..HID_KEY_Z (0x04..0x1D) is alphabetical, so each letter is
+// `HID_KEY_A + (letter - 'A')`.
+#define HID_KEY_D  (HID_KEY_A + 3)    // 0x07
+#define HID_KEY_E  (HID_KEY_A + 4)    // 0x08
+#define HID_KEY_S  (HID_KEY_A + 18)   // 0x16
+#define HID_KEY_X  (HID_KEY_A + 23)   // 0x1B
+
+// Map ALT+key combinations to TI FCTN control codes. The TI-99/4A had a
+// FCTN modifier key that combined with digits, letters, and = to produce
+// the editor control codes (DEL/INS/ERASE/CLEAR/REDO/etc) and the cursor
+// movement codes. Most BLE keyboards reserve their "Fn" key for hardware
+// profile switching, so it never reaches the HID layer; we use ALT as a
+// stand-in. Returns -1 when the (modifier, key) pair doesn't map to a
+// TI FCTN combo (caller should then fall through to normal ASCII).
+static int bleKbHidToFctnCode(uint8_t k)
+{
+  switch (k)
+  {
+    // FCTN + digits — TI editor / break codes.
+    case HID_KEY_1: return  7;   // FCTN+1  DEL
+    case HID_KEY_2: return  4;   // FCTN+2  INS
+    case HID_KEY_3: return  2;   // FCTN+3  ERASE
+    case HID_KEY_4: return 12;   // FCTN+4  CLEAR / break
+    case HID_KEY_5: return  5;   // FCTN+5  BEGIN
+    case HID_KEY_6: return  1;   // FCTN+6  AID    (matches F6 mapping above)
+    case HID_KEY_7: return  6;   // FCTN+7  PROCEED
+    case HID_KEY_8: return 14;   // FCTN+8  REDO
+    case HID_KEY_9: return 15;   // FCTN+9  BACK
+    // FCTN + S/D/E/X — TI cursor arrows.
+    case HID_KEY_S: return  8;   // FCTN+S  LEFT
+    case HID_KEY_D: return  9;   // FCTN+D  RIGHT
+    case HID_KEY_E: return 11;   // FCTN+E  UP
+    case HID_KEY_X: return 10;   // FCTN+X  DOWN
+  }
+  return -1;
+}
 
 static int bleKbHidToAscii(uint8_t k, bool shift)
 {
@@ -168,6 +220,9 @@ static void bleKbOnReport(const uint8_t* report, size_t len)
   uint8_t modifiers = report[0];
   const uint8_t* keys = &report[2];
   bool shift = (modifiers & (HID_MOD_LSHIFT | HID_MOD_RSHIFT)) != 0;
+  // ALT acts as the TI FCTN modifier (BLE keyboards' Fn key is usually
+  // hardware-only and never reaches the HID layer).
+  bool alt   = (modifiers & (HID_MOD_LALT   | HID_MOD_RALT  )) != 0;
 
   // Mirror arrow-key press state into the joystick globals so CALL
   // JOYST works in keyboard mode (Zero 2 mode K) and from any
@@ -227,6 +282,21 @@ static void bleKbOnReport(const uint8_t* report, size_t len)
     {
       bleKbCapsLock = !bleKbCapsLock;
       continue;
+    }
+
+    // ALT + key — TI FCTN modifier. Try first so ALT+1 produces DEL (7)
+    // instead of '1', ALT+E produces UP (11) instead of 'e', etc. If the
+    // key isn't part of a recognized FCTN combo, fall through to ASCII
+    // (ALT+anything-else just types the letter, same as before).
+    if (alt)
+    {
+      int fctn = bleKbHidToFctnCode(k);
+      if (fctn >= 0)
+      {
+        if (fctn == 12) bleKbBreakRequested = true;
+        bleKbPush((uint8_t)fctn);
+        continue;
+      }
     }
 
     bool effectiveShift = shift;

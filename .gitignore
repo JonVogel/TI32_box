@@ -10,26 +10,10 @@ dependencies.lock
 sdkconfig
 sdkconfig.old
 
-# Junctions to TI submodules — set up after clone via:
-#   mklink /J components\TI_Extended_Basic_Interpreter ..\esp32-s3-box-basic\TI_Extended_Basic_Interpreter
-#   mklink /J components\ESP32_File_Handling           ..\esp32-s3-box-basic\ESP32_File_Handling
-#   mklink /J components\BleHidHost                    ..\esp32-s3-box-basic\BleHidHost
-#   mklink /J components\TI_Font                       ..\esp32-s3-box-basic\TI_Font
-#   mklink /J components\TI_Speech                     ..\esp32-s3-box-basic\TI_Speech
-# Plus the 4 Arduino libraries from the user's arduino-cli libraries dir:
-#   mklink /J components\LovyanGFX        %USERPROFILE%\Documents\Arduino\libraries\LovyanGFX
-#   mklink /J components\NimBLE-Arduino   %USERPROFILE%\Documents\Arduino\libraries\NimBLE-Arduino
-#   mklink /J components\ESPAsyncWebServer %USERPROFILE%\Documents\Arduino\libraries\ESPAsyncWebServer
-#   mklink /J components\AsyncTCP         %USERPROFILE%\Documents\Arduino\libraries\AsyncTCP
-components/TI_Extended_Basic_Interpreter
-components/ESP32_File_Handling
-components/BleHidHost
-components/TI_Font
-components/TI_Speech
-components/LovyanGFX
-components/NimBLE-Arduino
-components/ESPAsyncWebServer
-components/AsyncTCP
+# components/ contents are vendored snapshots (was junctions to sibling
+# arduino-cli repo + arduino libraries dir). To be restructured next
+# session: TI_* layers consolidate into a single TI_EB_Emulator_ESP repo,
+# third-party Arduino libs become git submodules of forks.
 
 # IDE
 .vscode/
