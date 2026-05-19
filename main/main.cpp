@@ -3607,6 +3607,65 @@ static void processInput(const char* input)
     cmdUnmount(drive);
     return;
   }
+  // COPY <src-spec> TO <dst-spec> — non-TI extension. Specs follow
+  // the same form as SAVE / OLD ("FLASH.NAME", "SDCARD.NAME",
+  // "DSKn.NAME"). Quotes around either spec are optional and stripped.
+  // Examples:
+  //   COPY "SDCARD.FOO" TO "FLASH.FOO"
+  //   COPY DSK1.HELLO TO FLASH.HELLO
+  if (strncasecmp(&input[pos], "COPY", 4) == 0 &&
+      (input[pos + 4] == '\0' || input[pos + 4] == ' '))
+  {
+    auto readSpec = [&](int& p, char* out, int outSize) -> bool {
+      while (input[p] == ' ') p++;
+      bool quoted = (input[p] == '"');
+      if (quoted) p++;
+      int n = 0;
+      while (input[p] &&
+             (quoted ? input[p] != '"' : (input[p] != ' ' && input[p] != ',')) &&
+             n < outSize - 1)
+      {
+        out[n++] = input[p++];
+      }
+      out[n] = '\0';
+      if (quoted && input[p] == '"') p++;
+      return n > 0;
+    };
+
+    char srcSpec[48], dstSpec[48];
+    int p = pos + 4;
+    if (!readSpec(p, srcSpec, sizeof(srcSpec)))
+    {
+      printError("* BAD SOURCE");
+      return;
+    }
+    while (input[p] == ' ') p++;
+    if (strncasecmp(&input[p], "TO", 2) != 0 ||
+        (input[p + 2] != '\0' && input[p + 2] != ' ' && input[p + 2] != '"'))
+    {
+      printError("* MISSING TO");
+      return;
+    }
+    p += 2;
+    if (!readSpec(p, dstSpec, sizeof(dstSpec)))
+    {
+      printError("* BAD DESTINATION");
+      return;
+    }
+
+    progio::CopyStatus s = progio::copyFile(srcSpec, dstSpec);
+    if (s != progio::COPY_OK)
+    {
+      char buf[80];
+      snprintf(buf, sizeof(buf), "* %s", progio::copyStatusMessage(s));
+      printError(buf);
+      return;
+    }
+    char buf[96];
+    snprintf(buf, sizeof(buf), "COPIED: %s -> %s", srcSpec, dstSpec);
+    printLine(buf);
+    return;
+  }
   // NEWDISK <spec> "VOLNAME" [SSSD|DSSD|DSDD]
   if (strncasecmp(&input[pos], "NEWDISK", 7) == 0 &&
       (input[pos + 7] == '\0' || input[pos + 7] == ' '))

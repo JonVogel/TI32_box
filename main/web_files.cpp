@@ -20,6 +20,7 @@
 #include <SD_MMC.h>
 #include <array>
 #include "file_io.h"
+#include "program_io.h"    // progio::copyFile / Target / CopyStatus
 #include "ti_platform.h"   // tiYield()
 
 namespace webfiles
@@ -711,6 +712,33 @@ namespace webfiles
       req->send(resp);
     });
 
+    // POST /api/copy?src=DEV.NAME&dst=DEV.NAME — device-to-device copy.
+    // Specs are the same form BASIC's COPY / SAVE / OLD accept. Calls
+    // into the shared progio::copyFile() helper so the BASIC COPY
+    // command and the web /api/copy go through the exact same code.
+    s_server.on("/api/copy", HTTP_POST, [](AsyncWebServerRequest* req) {
+      String src = req->hasParam("src") ? req->getParam("src")->value() : "";
+      String dst = req->hasParam("dst") ? req->getParam("dst")->value() : "";
+      if (src.length() == 0 || dst.length() == 0)
+      {
+        req->send(400, "application/json",
+                  "{\"ok\":false,\"error\":\"missing src or dst\"}");
+        return;
+      }
+      progio::CopyStatus s = progio::copyFile(src.c_str(), dst.c_str());
+      if (s == progio::COPY_OK)
+      {
+        req->send(200, "application/json", "{\"ok\":true}");
+      }
+      else
+      {
+        String body = "{\"ok\":false,\"error\":\"";
+        body += progio::copyStatusMessage(s);
+        body += "\"}";
+        req->send(500, "application/json", body);
+      }
+    });
+
     // DELETE /api/mount?drive=N — unmount.
     s_server.on("/api/mount", HTTP_DELETE, [](AsyncWebServerRequest* req) {
       String driveStr = req->hasParam("drive") ? req->getParam("drive")->value() : "";
@@ -763,8 +791,8 @@ namespace webfiles
         ".err{color:#f88;}"
         ".muted{color:#789;font-size:.9em;}"
         ".rt{text-align:right;}"
-        ".del{color:#f88;cursor:pointer;background:transparent;border:none;padding:0 .4em;font-size:1em;}"
-        ".del:hover{color:#fff;}"
+        ".del{cursor:pointer;background:transparent;border:none;padding:0 .4em;font-size:1.1em;opacity:.7;}"
+        ".del:hover{opacity:1;}"
         "</style></head><body>"
         "<h1>TI Extended BASIC &mdash; File Manager</h1>"
         "<label>Device: <select id=dev></select></label> "
@@ -772,7 +800,11 @@ namespace webfiles
         " <button id=umbtn onclick=unmountCurrent() style='display:none'>Unmount this DSK</button>"
         "<div class=muted id=volinfo></div>"
         "<span class=muted id=status></span>"
-        "<table id=ftbl><thead><tr><th>Name</th><th class=rt>Size</th><th></th></tr>"
+        "<table id=ftbl><thead><tr>"
+        "<th>File <span class=muted>(click name to download)</span></th>"
+        "<th class=rt>Size</th>"
+        "<th>Copy to</th>"
+        "<th></th></tr>"
         "</thead><tbody></tbody></table>"
         "<h2>Upload to this device</h2>"
         "<input type=file id=upfile> <button onclick=upload()>Upload</button>"
@@ -810,6 +842,26 @@ namespace webfiles
         "const j=await r.json();"
         "if(!j.ok){alert(j.error||'delete failed');return;}"
         "refresh();}"
+        // Latest device list (populated by loadDevices); used by the
+        // per-row Copy-to dropdown so a copy lands on FLASH/SDCARD/DSK.
+        "let g_devs=[];"
+        // Build source/dest specs for the COPY endpoint.
+        // dev='FLASH'/'SDCARD'/'DSK1'..'DSKZ'; name is the listing's
+        // literal filename (preserves any extension).
+        "function makeSpec(dev,name){return dev+'.'+name;}"
+        "async function copyTo(srcDev,srcName,dstDev){"
+        "const s=document.getElementById('status');"
+        "s.textContent='copying '+srcName+' to '+dstDev+'...';"
+        "try{"
+        "const r=await fetch('/api/copy?src='+encodeURIComponent(makeSpec(srcDev,srcName))+"
+        "'&dst='+encodeURIComponent(makeSpec(dstDev,srcName)),{method:'POST'});"
+        "const j=await r.json();"
+        "if(!j.ok){s.innerHTML='<span class=err>copy: '+(j.error||'failed')+'</span>';return;}"
+        "s.textContent='copied '+srcName+' to '+dstDev;"
+        // If user copied to the currently-viewed device, refresh to
+        // show the new file. Either way, no need to reload devices.
+        "if(dstDev===document.getElementById('dev').value){refresh();}"
+        "}catch(e){s.innerHTML='<span class=err>copy: '+e+'</span>';}}"
         "async function refresh(){"
         "const d=document.getElementById('dev').value;"
         "const s=document.getElementById('status');"
@@ -834,14 +886,29 @@ namespace webfiles
         "a.href=dlUrl(d,f.name);a.textContent=f.name;a.download=f.name;"
         "const nameTd=document.createElement('td');nameTd.appendChild(a);"
         "const sizeTd=document.createElement('td');sizeTd.className='rt';sizeTd.textContent=fmt(f.size);"
-        "const actTd=document.createElement('td');"
+        // Copy-to dropdown — lists every other device.
+        "const copyTd=document.createElement('td');"
+        "const cs=document.createElement('select');"
+        "const optBlank=document.createElement('option');"
+        "optBlank.value='';optBlank.textContent='\\u2014';cs.appendChild(optBlank);"
+        "for(const dv of g_devs){"
+        "if(dv.id===d)continue;"
+        "const o=document.createElement('option');"
+        "o.value=dv.id;o.textContent=dv.label;cs.appendChild(o);}"
+        "cs.onchange=()=>{if(cs.value){copyTo(d,f.name,cs.value);cs.value='';}};"
+        "copyTd.appendChild(cs);"
         // Delete button shown only for FLASH/SDCARD (DSK delete not yet wired).
+        "const actTd=document.createElement('td');"
         "if(!isDsk(d)){"
         "const db=document.createElement('button');"
-        "db.className='del';db.textContent='\\u00d7';db.title='Delete';"
+        // 🗑 (U+1F5D1 WASTEBASKET) — the trash can Apple famously has
+        // strong feelings about. Falls back to the box glyph on
+        // terminals that lack the emoji.
+        "db.className='del';db.textContent='\\uD83D\\uDDD1';db.title='Delete';"
         "db.onclick=()=>delFile(f.name);"
         "actTd.appendChild(db);}"
-        "tr.appendChild(nameTd);tr.appendChild(sizeTd);tr.appendChild(actTd);"
+        "tr.appendChild(nameTd);tr.appendChild(sizeTd);"
+        "tr.appendChild(copyTd);tr.appendChild(actTd);"
         "tb.appendChild(tr);"
         "}}catch(e){s.innerHTML='<span class=err>'+e+'</span>';}}"
         // Populate the device dropdown from /api/devices on load.
@@ -851,8 +918,9 @@ namespace webfiles
         "try{"
         "const r=await fetch('/api/devices');"
         "const j=await r.json();"
+        "g_devs=j.devices||[];"   // cache for per-row Copy-to dropdowns
         "sel.innerHTML='';"
-        "for(const d of j.devices){"
+        "for(const d of g_devs){"
         "const o=document.createElement('option');"
         "o.value=d.id;o.textContent=d.label;sel.appendChild(o);}"
         "if(prev){"
