@@ -18,6 +18,7 @@
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
 #include <SD_MMC.h>
+#include <array>
 #include "file_io.h"
 #include "ti_platform.h"   // tiYield()
 
@@ -101,11 +102,10 @@ namespace webfiles
       };
 
       addDev("FLASH", "FLASH");
-      // SDCARD intentionally NOT advertised in this build — isolating
-      // the SD path for diagnostic purposes. If the web stays solid
-      // without SD, we know the SD touch (open("/"), readSector, etc.)
-      // is what's wedging AsyncTCP. Re-enable when we have a safer
-      // strategy (off-task SD probing, or sdkconfig DRAM headroom).
+      if (fio::g_sdOk)
+      {
+        addDev("SDCARD", "SDCARD");
+      }
 
       // Mounted DSK<n> drives. drive index 1..MAX_DSK maps to
       // DSK1..DSK9 / DSKA..DSKZ via driveToChar().
@@ -197,12 +197,12 @@ namespace webfiles
       }
       else if (dev.equalsIgnoreCase("SDCARD") || dev.equalsIgnoreCase("SD"))
       {
-        // Temporarily disabled for diagnostic isolation. If the web
-        // server stays solid without ever touching SD, we know the
-        // SD enumeration path is what's wedging AsyncTCP.
-        ok = false;
-        error = "SDCARD disabled in this build (diagnostic)";
-        if (false)
+        if (!fio::g_sdOk)
+        {
+          ok = false;
+          error = "SD not present";
+        }
+        else
         {
           volName  = "SDCARD";
           volTotal = SD_MMC.totalBytes();
@@ -325,6 +325,417 @@ namespace webfiles
       req->send(200, "application/json", body);
     });
 
+    // GET /api/file?dev=FLASH|SDCARD&path=NAME — stream a file to the
+    // browser as an attachment download. DSK extract is handled by a
+    // separate endpoint (/api/dskfile) below because the read path is
+    // sector-based, not filesystem-based.
+    s_server.on("/api/file", HTTP_GET, [](AsyncWebServerRequest* req) {
+      String dev  = req->hasParam("dev")  ? req->getParam("dev")->value()  : "FLASH";
+      String name = req->hasParam("path") ? req->getParam("path")->value() : "";
+
+      // Path-traversal guard. We always serve from the filesystem root,
+      // so reject anything with separators or '..'. Names that come from
+      // /api/files are always bare filenames.
+      if (name.length() == 0 ||
+          name.indexOf('/')   >= 0 ||
+          name.indexOf('\\')  >= 0 ||
+          name.indexOf("..") >= 0)
+      {
+        req->send(400, "text/plain", "bad path");
+        return;
+      }
+
+      fs::FS* fsRef = nullptr;
+      if (dev.equalsIgnoreCase("FLASH"))
+      {
+        fsRef = &LittleFS;
+      }
+      else if (dev.equalsIgnoreCase("SDCARD") || dev.equalsIgnoreCase("SD"))
+      {
+        if (!fio::g_sdOk) { req->send(503, "text/plain", "SD not present"); return; }
+        fsRef = &SD_MMC;
+      }
+      else
+      {
+        req->send(400, "text/plain", "unsupported device for /api/file (use /api/dskfile for DSK<n>)");
+        return;
+      }
+
+      String fullPath = "/";
+      fullPath += name;
+      if (!fsRef->exists(fullPath))
+      {
+        req->send(404, "text/plain", "not found");
+        return;
+      }
+
+      // beginResponse(fs, path, contentType="", download=true) sets
+      // Content-Disposition: attachment so the browser saves rather
+      // than tries to render. Empty content type lets the server pick
+      // application/octet-stream — fine for .bas / .DSK / etc.
+      AsyncWebServerResponse* resp =
+          req->beginResponse(*fsRef, fullPath, String(), true);
+      req->send(resp);
+    });
+
+    // DELETE /api/file?dev=FLASH|SDCARD&path=NAME — delete the file.
+    // No DSK delete here: removing a file from a V9T9 catalog requires
+    // rewriting the catalog + bitmap, which the DSK image library
+    // handles via its own path (image->deleteFile()) — exposed by a
+    // future /api/dskfile DELETE if needed.
+    s_server.on("/api/file", HTTP_DELETE, [](AsyncWebServerRequest* req) {
+      String dev  = req->hasParam("dev")  ? req->getParam("dev")->value()  : "FLASH";
+      String name = req->hasParam("path") ? req->getParam("path")->value() : "";
+
+      if (name.length() == 0 ||
+          name.indexOf('/')   >= 0 ||
+          name.indexOf('\\')  >= 0 ||
+          name.indexOf("..") >= 0)
+      {
+        req->send(400, "application/json", "{\"ok\":false,\"error\":\"bad path\"}");
+        return;
+      }
+
+      fs::FS* fsRef = nullptr;
+      if (dev.equalsIgnoreCase("FLASH"))
+      {
+        fsRef = &LittleFS;
+      }
+      else if (dev.equalsIgnoreCase("SDCARD") || dev.equalsIgnoreCase("SD"))
+      {
+        if (!fio::g_sdOk)
+        {
+          req->send(503, "application/json", "{\"ok\":false,\"error\":\"SD not present\"}");
+          return;
+        }
+        fsRef = &SD_MMC;
+      }
+      else
+      {
+        req->send(400, "application/json", "{\"ok\":false,\"error\":\"unsupported device\"}");
+        return;
+      }
+
+      String fullPath = "/";
+      fullPath += name;
+      if (!fsRef->exists(fullPath))
+      {
+        req->send(404, "application/json", "{\"ok\":false,\"error\":\"not found\"}");
+        return;
+      }
+      bool ok = fsRef->remove(fullPath);
+      String body = String("{\"ok\":") + (ok ? "true" : "false");
+      if (!ok) body += ",\"error\":\"remove failed\"";
+      body += "}";
+      req->send(ok ? 200 : 500, "application/json", body);
+    });
+
+    // POST /api/upload?dev=FLASH|SDCARD — multipart form upload. The
+    // upload-chunk handler runs multiple times per file (index = 0 on
+    // the first chunk, final = true on the last); we open the dest
+    // file once at index 0 and stream writes through. State lives in
+    // a module-static because the async server can only have one
+    // upload in flight at a time anyway.
+    static struct UploadCtx {
+      File f;
+      bool started;          // dest file successfully opened
+      bool failed;           // any error seen since start
+      String error;          // human-readable reason if failed
+    } s_upload = { File(), false, false, "" };
+
+    s_server.on("/api/upload", HTTP_POST,
+      // Request-completion handler — runs after the upload chunk
+      // stream finishes. Reports the outcome captured by the chunk
+      // handler.
+      [](AsyncWebServerRequest* req) {
+        if (s_upload.failed)
+        {
+          String body = "{\"ok\":false,\"error\":\"";
+          body += s_upload.error;
+          body += "\"}";
+          req->send(500, "application/json", body);
+        }
+        else if (s_upload.started)
+        {
+          req->send(200, "application/json", "{\"ok\":true}");
+        }
+        else
+        {
+          req->send(400, "application/json",
+                    "{\"ok\":false,\"error\":\"no file in request\"}");
+        }
+      },
+      // Per-chunk upload handler.
+      [](AsyncWebServerRequest* req, const String& filename,
+         size_t index, uint8_t* data, size_t len, bool final) {
+        if (index == 0)
+        {
+          // First chunk — reset state and open the destination.
+          s_upload.failed  = false;
+          s_upload.started = false;
+          s_upload.error   = "";
+          if (s_upload.f) { s_upload.f.close(); }
+
+          // Path-traversal guard. The filename here is the original
+          // form-field filename from the client; treat it as untrusted.
+          if (filename.length() == 0 ||
+              filename.indexOf('/')   >= 0 ||
+              filename.indexOf('\\')  >= 0 ||
+              filename.indexOf("..") >= 0)
+          {
+            s_upload.failed = true;
+            s_upload.error  = "bad filename";
+            return;
+          }
+
+          String dev = req->hasParam("dev") ? req->getParam("dev")->value() : "FLASH";
+          fs::FS* fsRef = nullptr;
+          if (dev.equalsIgnoreCase("FLASH"))
+          {
+            fsRef = &LittleFS;
+          }
+          else if (dev.equalsIgnoreCase("SDCARD") || dev.equalsIgnoreCase("SD"))
+          {
+            if (!fio::g_sdOk)
+            {
+              s_upload.failed = true;
+              s_upload.error  = "SD not present";
+              return;
+            }
+            fsRef = &SD_MMC;
+          }
+          else
+          {
+            s_upload.failed = true;
+            s_upload.error  = "unsupported device";
+            return;
+          }
+
+          String fullPath = "/";
+          fullPath += filename;
+          s_upload.f = fsRef->open(fullPath, "w");
+          if (!s_upload.f)
+          {
+            s_upload.failed = true;
+            s_upload.error  = "open failed";
+            return;
+          }
+          s_upload.started = true;
+        }
+
+        if (s_upload.failed || !s_upload.started || !s_upload.f) return;
+
+        if (len > 0)
+        {
+          size_t written = s_upload.f.write(data, len);
+          if (written != len)
+          {
+            s_upload.failed = true;
+            s_upload.error  = "write short";
+            s_upload.f.close();
+            return;
+          }
+        }
+
+        if (final)
+        {
+          s_upload.f.flush();
+          s_upload.f.close();
+        }
+      });
+
+    // POST /api/mount?drive=N&spec=DEVICE.NAME — mount a .DSK image
+    // into a virtual drive slot. `drive` is 1..MAX_DSK (35) or DSK<c>.
+    // `spec` is the same form BASIC's MOUNT command takes:
+    //   "FLASH.MYDISK"   — image file on internal LittleFS
+    //   "SDCARD.MYDISK"  — image file on the SD card
+    s_server.on("/api/mount", HTTP_POST, [](AsyncWebServerRequest* req) {
+      String driveStr = req->hasParam("drive") ? req->getParam("drive")->value() : "";
+      String spec     = req->hasParam("spec")  ? req->getParam("spec")->value()  : "";
+
+      // Accept either "1", "DSK1", or "1" with separator dropped.
+      int drive = 0;
+      if (driveStr.length() > 0)
+      {
+        if (driveStr.equalsIgnoreCase("DSK") && driveStr.length() == 4)
+        {
+          drive = fio::driveFromChar(driveStr[3]);
+        }
+        else if (driveStr.length() >= 4 &&
+                 (driveStr[0] == 'D' || driveStr[0] == 'd') &&
+                 (driveStr[1] == 'S' || driveStr[1] == 's') &&
+                 (driveStr[2] == 'K' || driveStr[2] == 'k'))
+        {
+          drive = fio::driveFromChar(driveStr[3]);
+        }
+        else
+        {
+          drive = driveStr.toInt();
+        }
+      }
+      if (drive < 1 || drive > fio::MAX_DSK)
+      {
+        req->send(400, "application/json",
+                  "{\"ok\":false,\"error\":\"drive must be 1..35 or DSK1..DSKZ\"}");
+        return;
+      }
+      if (spec.length() == 0)
+      {
+        req->send(400, "application/json",
+                  "{\"ok\":false,\"error\":\"missing spec\"}");
+        return;
+      }
+
+      bool ok = fio::mountDskImage(drive, spec.c_str());
+      String body = String("{\"ok\":") + (ok ? "true" : "false");
+      if (!ok)
+      {
+        body += ",\"error\":\"mount failed (file missing or not a DSK?)\"";
+      }
+      else
+      {
+        body += ",\"drive\":";
+        body += drive;
+      }
+      body += "}";
+      req->send(ok ? 200 : 500, "application/json", body);
+    });
+
+    // GET /api/dskfile?drive=N&path=NAME — extract a single file out
+    // of a mounted V9T9 .DSK image and stream it as a download. Reads
+    // sector-by-sector through the chunked-response callback, so no
+    // big-buffer allocation is needed up front. Caller responsibility
+    // is to know the file name from /api/files?dev=DSK<n>.
+    s_server.on("/api/dskfile", HTTP_GET, [](AsyncWebServerRequest* req) {
+      String driveStr = req->hasParam("drive") ? req->getParam("drive")->value() : "";
+      String name     = req->hasParam("path")  ? req->getParam("path")->value()  : "";
+
+      int drive = 0;
+      if (driveStr.length() >= 4 &&
+          (driveStr[0] == 'D' || driveStr[0] == 'd') &&
+          (driveStr[1] == 'S' || driveStr[1] == 's') &&
+          (driveStr[2] == 'K' || driveStr[2] == 'k'))
+      {
+        drive = fio::driveFromChar(driveStr[3]);
+      }
+      else
+      {
+        drive = driveStr.toInt();
+      }
+      if (drive < 1 || drive > fio::MAX_DSK)
+      {
+        req->send(400, "text/plain", "bad drive");
+        return;
+      }
+      if (name.length() == 0)
+      {
+        req->send(400, "text/plain", "missing path");
+        return;
+      }
+
+      dsk::DskImage* img = fio::dskImage(drive);
+      if (!img)
+      {
+        req->send(503, "text/plain", "drive not mounted");
+        return;
+      }
+
+      // Resolve the file's FDR. Names in the catalog are 10-char
+      // space-padded; pad the request name to match.
+      dsk::FileInfo info;
+      if (!img->findFile(name.c_str(), info))
+      {
+        req->send(404, "text/plain", "file not in catalog");
+        return;
+      }
+
+      // Compute precise byte length. The last sector may be partially
+      // used; eofOffset gives the byte index of EOF in that sector.
+      // (Matches readRawFile's accounting.)
+      size_t totalBytes = (size_t)info.sectorCount * dsk::SECTOR_SIZE;
+      if (info.eofOffset != 0 && info.sectorCount > 0)
+      {
+        totalBytes = (size_t)(info.sectorCount - 1) * dsk::SECTOR_SIZE + info.eofOffset;
+      }
+
+      // Streaming response. Lambda state tracks (a) which catalog
+      // sector we're on, (b) how far through that sector's 256-byte
+      // payload, and (c) the cached payload itself so a small maxLen
+      // doesn't force us to re-read the same sector. `mutable` so the
+      // captured cursors advance across calls. AwsResponseFiller:
+      //   size_t(uint8_t* out, size_t maxLen, size_t alreadySent)
+      // Return 0 to signal "done". The lambda lives inside the
+      // AsyncWebServerResponse for the duration of the send.
+      auto resp = req->beginChunkedResponse(
+        "application/octet-stream",
+        [drive, info, totalBytes,
+         sectorIdx    = (uint16_t)0,
+         sectorPos    = (size_t)0,            // 0..SECTOR_SIZE
+         bytesEmitted = (size_t)0,
+         sbuf         = std::array<uint8_t, dsk::SECTOR_SIZE>{},
+         sbufValid    = false]
+        (uint8_t* outBuf, size_t maxLen, size_t /*alreadySent*/) mutable -> size_t
+        {
+          if (bytesEmitted >= totalBytes) return 0;
+          // Re-resolve the image each call — paranoid against an
+          // unmount happening mid-stream.
+          dsk::DskImage* im = fio::dskImage(drive);
+          if (!im) return 0;
+
+          // Pull in a fresh sector when we've drained the cached one.
+          if (!sbufValid || sectorPos >= dsk::SECTOR_SIZE)
+          {
+            if (sectorIdx >= info.sectorCount) return 0;
+            if (!im->readSector(info.sectors[sectorIdx], sbuf.data())) return 0;
+            sectorIdx++;
+            sectorPos = 0;
+            sbufValid = true;
+          }
+
+          size_t remainingInSector = dsk::SECTOR_SIZE - sectorPos;
+          size_t remainingInFile   = totalBytes - bytesEmitted;
+          size_t want = remainingInSector;
+          if (want > remainingInFile) want = remainingInFile;
+          if (want > maxLen)          want = maxLen;
+          memcpy(outBuf, sbuf.data() + sectorPos, want);
+          sectorPos    += want;
+          bytesEmitted += want;
+          return want;
+        });
+
+      // Tell the browser to save rather than try to render.
+      char disp[80];
+      snprintf(disp, sizeof(disp),
+               "attachment; filename=\"%s\"", name.c_str());
+      resp->addHeader("Content-Disposition", disp);
+      req->send(resp);
+    });
+
+    // DELETE /api/mount?drive=N — unmount.
+    s_server.on("/api/mount", HTTP_DELETE, [](AsyncWebServerRequest* req) {
+      String driveStr = req->hasParam("drive") ? req->getParam("drive")->value() : "";
+      int drive = 0;
+      if (driveStr.length() >= 4 &&
+          (driveStr[0] == 'D' || driveStr[0] == 'd') &&
+          (driveStr[1] == 'S' || driveStr[1] == 's') &&
+          (driveStr[2] == 'K' || driveStr[2] == 'k'))
+      {
+        drive = fio::driveFromChar(driveStr[3]);
+      }
+      else
+      {
+        drive = driveStr.toInt();
+      }
+      if (drive < 1 || drive > fio::MAX_DSK)
+      {
+        req->send(400, "application/json",
+                  "{\"ok\":false,\"error\":\"bad drive\"}");
+        return;
+      }
+      fio::unmountDskImage(drive);
+      req->send(200, "application/json", "{\"ok\":true}");
+    });
+
     // Root HTML page. Plain, server-rendered shell that uses fetch() to
     // populate the file table from /api/files. No JS framework, no
     // external CDN — the whole UI is self-contained and works without
@@ -337,35 +748,75 @@ namespace webfiles
         "<!doctype html><html><head><meta charset=utf-8>"
         "<title>TI Extended BASIC Files</title>"
         "<style>"
-        "body{font-family:monospace;background:#001;color:#cdf;margin:1em;}"
+        "body{font-family:monospace;background:#001;color:#cdf;margin:1em;max-width:64em;}"
         "h1{color:#fff;border-bottom:1px solid #468;padding-bottom:.3em;}"
-        "select,button{font-family:monospace;background:#024;color:#cdf;"
+        "h2{color:#fff;font-size:1em;border-bottom:1px solid #246;margin-top:1.5em;}"
+        "input,select,button{font-family:monospace;background:#024;color:#cdf;"
         "border:1px solid #468;padding:.3em .6em;}"
-        "table{margin-top:1em;border-collapse:collapse;}"
+        "input[type=text]{min-width:14em;}"
+        "table{margin-top:.5em;border-collapse:collapse;width:100%;}"
         "th,td{padding:.2em .8em;text-align:left;border-bottom:1px solid #246;}"
         "th{color:#fff;}"
         "tr:hover{background:#012;}"
+        "a{color:#9cf;text-decoration:none;}"
+        "a:hover{text-decoration:underline;}"
         ".err{color:#f88;}"
         ".muted{color:#789;font-size:.9em;}"
+        ".rt{text-align:right;}"
+        ".del{color:#f88;cursor:pointer;background:transparent;border:none;padding:0 .4em;font-size:1em;}"
+        ".del:hover{color:#fff;}"
         "</style></head><body>"
-        "<h1>TI Extended BASIC &mdash; File Browser</h1>"
+        "<h1>TI Extended BASIC &mdash; File Manager</h1>"
         "<label>Device: <select id=dev></select></label> "
         "<button onclick=refreshAll()>Refresh</button>"
+        " <button id=umbtn onclick=unmountCurrent() style='display:none'>Unmount this DSK</button>"
         "<div class=muted id=volinfo></div>"
         "<span class=muted id=status></span>"
-        "<table id=ftbl><thead><tr><th>Name</th><th>Size</th></tr>"
+        "<table id=ftbl><thead><tr><th>Name</th><th class=rt>Size</th><th></th></tr>"
         "</thead><tbody></tbody></table>"
+        "<h2>Upload to this device</h2>"
+        "<input type=file id=upfile> <button onclick=upload()>Upload</button>"
+        "<span class=muted id=upstatus></span>"
+        "<h2>Mount a .DSK image as a virtual drive</h2>"
+        "<label>Spec: <input type=text id=mountspec placeholder='FLASH.MYDISK or SDCARD.NAME'></label> "
+        "<label>Drive: <select id=mountdrive></select></label> "
+        "<button onclick=mount()>Mount</button>"
+        "<span class=muted id=mountstatus></span>"
         "<script>"
-        "function fmt(n){"  // human-readable byte sizes
+        // human-readable byte sizes
+        "function fmt(n){"
         "if(n<1024)return n+' B';"
         "if(n<1048576)return (n/1024).toFixed(1)+' KB';"
         "if(n<1073741824)return (n/1048576).toFixed(1)+' MB';"
         "return (n/1073741824).toFixed(2)+' GB';}"
+        // True for DSK1..DSKZ device ids (case-insensitive).
+        "function isDsk(d){return /^dsk[1-9a-z]$/i.test(d);}"
+        // Drive number for DSK<c>: 1..9 then A=10..Z=35.
+        "function driveOf(d){"
+        "const c=d.slice(3).toUpperCase();"
+        "if(c>='1'&&c<='9')return c.charCodeAt(0)-48;"
+        "if(c>='A'&&c<='Z')return c.charCodeAt(0)-65+10;"
+        "return 0;}"
+        // Download URL for a file. DSK files go through the sector-streaming
+        // /api/dskfile endpoint; flat FS files use /api/file.
+        "function dlUrl(dev,name){"
+        "if(isDsk(dev))return '/api/dskfile?drive='+driveOf(dev)+'&path='+encodeURIComponent(name);"
+        "return '/api/file?dev='+encodeURIComponent(dev)+'&path='+encodeURIComponent(name);}"
+        "async function delFile(name){"
+        "const d=document.getElementById('dev').value;"
+        "if(isDsk(d)){alert('Delete inside a DSK image is not supported via the web yet.');return;}"
+        "if(!confirm('Delete '+name+' from '+d+'?'))return;"
+        "const r=await fetch('/api/file?dev='+encodeURIComponent(d)+'&path='+encodeURIComponent(name),{method:'DELETE'});"
+        "const j=await r.json();"
+        "if(!j.ok){alert(j.error||'delete failed');return;}"
+        "refresh();}"
         "async function refresh(){"
         "const d=document.getElementById('dev').value;"
         "const s=document.getElementById('status');"
         "const vi=document.getElementById('volinfo');"
         "const tb=document.querySelector('#ftbl tbody');"
+        // Show the unmount button only when viewing a DSK device.
+        "document.getElementById('umbtn').style.display=isDsk(d)?'':'none';"
         "tb.innerHTML='';vi.textContent='';s.textContent='loading...';"
         "try{"
         "const r=await fetch('/api/files?dev='+encodeURIComponent(d));"
@@ -379,13 +830,21 @@ namespace webfiles
         "s.textContent=j.files.length+' file(s)';"
         "for(const f of j.files){"
         "const tr=document.createElement('tr');"
-        "tr.innerHTML='<td>'+f.name+'</td><td>'+fmt(f.size)+'</td>';"
+        "const a=document.createElement('a');"
+        "a.href=dlUrl(d,f.name);a.textContent=f.name;a.download=f.name;"
+        "const nameTd=document.createElement('td');nameTd.appendChild(a);"
+        "const sizeTd=document.createElement('td');sizeTd.className='rt';sizeTd.textContent=fmt(f.size);"
+        "const actTd=document.createElement('td');"
+        // Delete button shown only for FLASH/SDCARD (DSK delete not yet wired).
+        "if(!isDsk(d)){"
+        "const db=document.createElement('button');"
+        "db.className='del';db.textContent='\\u00d7';db.title='Delete';"
+        "db.onclick=()=>delFile(f.name);"
+        "actTd.appendChild(db);}"
+        "tr.appendChild(nameTd);tr.appendChild(sizeTd);tr.appendChild(actTd);"
         "tb.appendChild(tr);"
         "}}catch(e){s.innerHTML='<span class=err>'+e+'</span>';}}"
-        // Populate the device dropdown from /api/devices on load. The
-        // Refresh button re-runs both — handy after mounting a DSK at
-        // the BASIC prompt so it appears in the dropdown without
-        // reloading the page.
+        // Populate the device dropdown from /api/devices on load.
         "async function loadDevices(){"
         "const sel=document.getElementById('dev');"
         "const prev=sel.value;"
@@ -401,11 +860,65 @@ namespace webfiles
         "}catch(e){"
         "document.getElementById('status').innerHTML="
         "'<span class=err>devices: '+e+'</span>';}}"
-        // refreshAll re-runs both endpoints; Refresh button uses this
+        // Populate the mount-drive dropdown once with 1..35 (DSK1..DSKZ).
+        "function initMountDrives(){"
+        "const sel=document.getElementById('mountdrive');"
+        "for(let i=1;i<=35;i++){"
+        "const c=i<=9?String(i):String.fromCharCode(65+i-10);"
+        "const o=document.createElement('option');o.value=i;o.textContent='DSK'+c;"
+        "sel.appendChild(o);}}"
+        // Mount a DSK image. Spec is the BASIC-style 'FLASH.NAME' or
+        // 'SDCARD.NAME'. After success, refresh devices so the new DSK
+        // appears in the dropdown.
+        "async function mount(){"
+        "const spec=document.getElementById('mountspec').value.trim();"
+        "const drive=document.getElementById('mountdrive').value;"
+        "const st=document.getElementById('mountstatus');"
+        "if(!spec){st.innerHTML='<span class=err>need a spec</span>';return;}"
+        "st.textContent='mounting...';"
+        "try{"
+        "const r=await fetch('/api/mount?drive='+drive+'&spec='+encodeURIComponent(spec),{method:'POST'});"
+        "const j=await r.json();"
+        "if(!j.ok){st.innerHTML='<span class=err>'+(j.error||'mount failed')+'</span>';return;}"
+        "st.textContent='mounted on DSK'+(drive<=9?drive:String.fromCharCode(65+(drive-10)));"
+        "await loadDevices();"
+        "}catch(e){st.innerHTML='<span class=err>'+e+'</span>';}}"
+        // Unmount the currently-selected DSK.
+        "async function unmountCurrent(){"
+        "const d=document.getElementById('dev').value;"
+        "if(!isDsk(d))return;"
+        "if(!confirm('Unmount '+d+'?'))return;"
+        "try{"
+        "const r=await fetch('/api/mount?drive='+driveOf(d),{method:'DELETE'});"
+        "const j=await r.json();"
+        "if(!j.ok){alert(j.error||'unmount failed');return;}"
+        // Drop back to FLASH and refresh.
+        "const sel=document.getElementById('dev');sel.value='FLASH';"
+        "await refreshAll();"
+        "}catch(e){alert(e);}}"
+        // File upload via multipart POST. Browser handles the encoding.
+        "async function upload(){"
+        "const f=document.getElementById('upfile').files[0];"
+        "const d=document.getElementById('dev').value;"
+        "const st=document.getElementById('upstatus');"
+        "if(!f){st.innerHTML='<span class=err>pick a file first</span>';return;}"
+        "if(isDsk(d)){st.innerHTML='<span class=err>upload to a DSK image isn\\'t supported via the web yet</span>';return;}"
+        "st.textContent='uploading '+f.name+' ('+fmt(f.size)+')...';"
+        "const fd=new FormData();fd.append('file',f);"
+        "try{"
+        "const r=await fetch('/api/upload?dev='+encodeURIComponent(d),{method:'POST',body:fd});"
+        "const j=await r.json();"
+        "if(!j.ok){st.innerHTML='<span class=err>'+(j.error||'upload failed')+'</span>';return;}"
+        "st.textContent='uploaded '+f.name;"
+        "document.getElementById('upfile').value='';"
+        "refresh();"
+        "}catch(e){st.innerHTML='<span class=err>'+e+'</span>';}}"
+        // refreshAll re-runs devices + files; Refresh button uses this
         // so a DSK mounted at the BASIC prompt becomes visible in the
         // dropdown without a full page reload.
         "async function refreshAll(){await loadDevices();await refresh();}"
         "document.getElementById('dev').onchange=refresh;"
+        "initMountDrives();"
         "refreshAll();"
         "</script></body></html>";
       // Send the page as a String. Verified working via curl: the
