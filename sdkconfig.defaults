@@ -60,6 +60,13 @@ CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=8
 CONFIG_ESP_WIFI_AMPDU_TX_ENABLED=n
 CONFIG_ESP_WIFI_AMPDU_RX_ENABLED=n
 
+# --- FATFS: enable Long File Names so SAVE to SDCARD works ---
+# IDF default is LFN_NONE (8.3 short names only). That makes fopen()
+# fail for anything not fitting 8.3 — e.g. SAVE "SDCARD.SPRITEDEMO"
+# tries to create /sdcard/SPRITEDEMO.bas (10 chars + .bas), no go.
+# HEAP buffer is the same default arduino-esp32 ships with.
+CONFIG_FATFS_LFN_HEAP=y
+
 # --- lwIP: trim sockets / TCPIP task ---
 CONFIG_LWIP_MAX_SOCKETS=8
 # IDF v5.5 renamed CONFIG_LWIP_TCP_RCV_BUF_DEFAULT to CONFIG_LWIP_TCP_WND_DEFAULT.
