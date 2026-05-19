@@ -3301,8 +3301,11 @@ static void cmdDelete(const char* filename)
 }
 
 // --- V9T9 .dsk mount table persistence ---
-// /mounts.cfg on LittleFS — three lines, one per drive; blank = unmounted.
-static void saveMounts()
+// /mounts.cfg on LittleFS — one line per drive; blank = unmounted.
+// Non-static so web_files.cpp's /api/mount handlers can also persist
+// the mount table (they used to bypass this and lose web-initiated
+// mounts on reboot).
+void saveMounts()
 {
   File f = LittleFS.open("/mounts.cfg", "w");
   if (!f) return;
@@ -3352,7 +3355,8 @@ static void cmdMount(int drive, const char* imageName)
     printError(why);
     return;
   }
-  saveMounts();
+  // saveMounts() runs automatically via the mount-changed callback
+  // registered in setup(); we don't have to duplicate it here.
   char msg[64];
   snprintf(msg, sizeof(msg), "DSK%c = %s  [%s  %d sectors]",
            fio::driveToChar(drive), imageName,
@@ -3462,7 +3466,7 @@ static void cmdUnmount(int drive)
     return;
   }
   fio::unmountDskImage(drive);
-  saveMounts();
+  // saveMounts() runs automatically via the mount-changed callback.
   char msg[32];
   snprintf(msg, sizeof(msg), "DSK%c UNMOUNTED", fio::driveToChar(drive));
   printLine(msg);
@@ -3911,6 +3915,10 @@ void setup()
     SD_MMC.end();
     fio::setSDFs(nullptr);
   });
+  // Mount table persists automatically: file_handling fires this hook
+  // after every successful mount / unmount so every caller (BASIC,
+  // web, future automation) gets reboot-safe mounts for free.
+  fio::setMountChangedCallback([]() { saveMounts(); });
   tryInitSd();
 
   // Restore any DSK<n> mounts from /mounts.cfg on LittleFS so that

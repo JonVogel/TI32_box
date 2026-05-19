@@ -588,6 +588,9 @@ namespace webfiles
       }
 
       bool ok = fio::mountDskImage(drive, spec.c_str());
+      // Persistence happens automatically inside fio::mountDskImage via
+      // the mount-changed callback registered in setup() — no separate
+      // saveMounts() call needed here.
       String body = String("{\"ok\":") + (ok ? "true" : "false");
       if (!ok)
       {
@@ -761,6 +764,7 @@ namespace webfiles
         return;
       }
       fio::unmountDskImage(drive);
+      // Persistence happens automatically inside fio::unmountDskImage.
       req->send(200, "application/json", "{\"ok\":true}");
     });
 
