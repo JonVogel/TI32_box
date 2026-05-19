@@ -88,6 +88,14 @@ CONFIG_BT_NIMBLE_MAX_CONNECTIONS=2
 CONFIG_BT_NIMBLE_MAX_BONDS=4
 CONFIG_BT_NIMBLE_MAX_CCCDS=8
 
+# IDF NimBLE host's compile-time log level. Default is INFO which is
+# very chatty during scan/GAP. WARNING keeps errors visible (and lets
+# the linker strip the INFO format strings — smaller binary).
+# Runtime esp_log_level_set in setup() does the same for the bundled
+# NimBLE-Arduino host stack's ESP_LOGI calls and for WiFi.
+# CONFIG_BT_NIMBLE_LOG_LEVEL_INFO is not set
+CONFIG_BT_NIMBLE_LOG_LEVEL_WARNING=y
+
 # --- AsyncTCP queue ---
 # CONFIG_ASYNC_TCP_QUEUE_SIZE is a plain `#define` in AsyncTCP.h (not a
 # Kconfig), so it's set as a target_compile_definitions in the AsyncTCP

@@ -22,6 +22,7 @@
 #include <LovyanGFX.hpp>
 #include <LGFX_AUTODETECT.hpp>
 #include <esp_heap_caps.h>
+#include <esp_log.h>
 #include "audio.h"
 #include "tms5220.h"   // triggers arduino-cli discovery of TI_Speech library
 #include <LittleFS.h>
@@ -3792,6 +3793,20 @@ void setup()
   Serial.setRxBufferSize(4096);
   Serial.begin(115200);
   delay(500);
+
+  // Silence the noisier subsystems' INFO chatter. NimBLE's GAP/GATT
+  // events and WiFi's connection lifecycle each emit ~10 lines per
+  // operation; useful for first bring-up, hostile for normal use.
+  // Errors and warnings stay visible. Re-raise any of these to
+  // ESP_LOG_INFO when actually debugging that subsystem.
+  esp_log_level_set("NimBLE",     ESP_LOG_WARN);
+  esp_log_level_set("BLE_INIT",   ESP_LOG_WARN);  // NimBLE port init
+  esp_log_level_set("wifi",       ESP_LOG_WARN);
+  esp_log_level_set("wifi_init",  ESP_LOG_WARN);
+  esp_log_level_set("wpa",        ESP_LOG_WARN);
+  esp_log_level_set("esp_netif_lwip", ESP_LOG_WARN);
+  esp_log_level_set("dhcpc",      ESP_LOG_WARN);
+  esp_log_level_set("phy_init",   ESP_LOG_WARN);
 
   // Box-3 has no independently-driven user LEDs: D3 LED-GREEN tracks
   // LCD_CTRL via U18B, so it lights automatically with the backlight.
