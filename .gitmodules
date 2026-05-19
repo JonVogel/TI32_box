@@ -1,0 +1,20 @@
+[submodule "components/ti-emulator"]
+	path = components/ti-emulator
+	url = https://github.com/JonVogel/TI_EB_Emulator_ESP.git
+	branch = main
+[submodule "components/LovyanGFX"]
+	path = components/LovyanGFX
+	url = https://github.com/JonVogel/LovyanGFX.git
+	branch = idf-port
+[submodule "components/NimBLE-Arduino"]
+	path = components/NimBLE-Arduino
+	url = https://github.com/JonVogel/NimBLE-Arduino.git
+	branch = idf-port
+[submodule "components/AsyncTCP"]
+	path = components/AsyncTCP
+	url = https://github.com/JonVogel/AsyncTCP.git
+	branch = idf-port
+[submodule "components/ESPAsyncWebServer"]
+	path = components/ESPAsyncWebServer
+	url = https://github.com/JonVogel/ESPAsyncWebServer.git
+	branch = idf-port

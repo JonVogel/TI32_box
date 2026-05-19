@@ -1,17 +1,32 @@
 # Top-level CMake for the ESP-IDF port of esp32-s3-box-basic.
 #
-# This is a parallel project to the arduino-cli build at
-# c:\dev\repos\esp32-s3-box-basic\. Both share the same TI_* submodule
-# source via the components/ directory below. The arduino-cli build
-# stays as a working reference while this IDF port is brought up.
+# Parallel project to the arduino-cli build at
+# https://github.com/JonVogel/esp32-s3-box-basic — the arduino-cli build
+# stays as a working reference while the IDF port evolves.
 #
 # Build:  idf.py build
 # Flash:  idf.py -p COM19 flash
 # Monitor: idf.py monitor
 cmake_minimum_required(VERSION 3.16)
 
-# Pull our local copies of the Arduino-style libraries via components/.
-set(EXTRA_COMPONENT_DIRS components)
+# Two component search paths:
+#   components/                          — local components (the `arduino`
+#                                          shim that wraps the IDF
+#                                          Component Manager's
+#                                          espressif/arduino-esp32) and
+#                                          submodules at top level
+#                                          (LovyanGFX, NimBLE-Arduino,
+#                                          AsyncTCP, ESPAsyncWebServer).
+#   components/ti-emulator/components    — the consolidated TI emulator
+#                                          submodule (JonVogel/TI_EB_Emulator_ESP)
+#                                          exposes 5 IDF components inside
+#                                          its own components/ subdir:
+#                                          interpreter, font, speech,
+#                                          ble_hid_host, file_handling.
+set(EXTRA_COMPONENT_DIRS
+    components
+    components/ti-emulator/components
+)
 
 # Match the arduino-cli FQBN's `CDCOnBoot=cdc`. arduino-esp32's
 # HardwareSerial.h reroutes `Serial` to:

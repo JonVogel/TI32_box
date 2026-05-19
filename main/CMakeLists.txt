@@ -17,13 +17,17 @@ idf_component_register(
         # we wrap that with the local components/arduino/ shim so child
         # components can keep using the unqualified `arduino` name.
         arduino
-        # Our shared Arduino libraries dropped into components/.
-        TI_Extended_Basic_Interpreter
-        TI_Font
-        BleHidHost
-        ESP32_File_Handling
-        TI_Speech
-        # Third-party Arduino libraries (also under components/).
+        # The 5 TI emulator host-shared layers come from the consolidated
+        # TI_EB_Emulator_ESP submodule (components/ti-emulator/). The
+        # submodule's own components/ subdir is added to
+        # EXTRA_COMPONENT_DIRS at the top-level CMakeLists, so each one
+        # is just referenced by name here.
+        interpreter            # TI Extended BASIC engine
+        font                   # 8x8 TI ROM font + TI logo
+        speech                 # TMS5220 LPC-10 synth + cartridge ROM
+        ble_hid_host           # NimBLE multi-peer BLE HID host
+        file_handling          # LittleFS / SD / V9T9 DSK file I/O
+        # Third-party Arduino libraries (submodules under components/).
         LovyanGFX
         NimBLE-Arduino
         ESPAsyncWebServer
