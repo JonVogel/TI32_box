@@ -1,10 +1,10 @@
 {
 	"folders": [
 		{
-			"path": "../esp32-s3-box-basic"
+			"path": "."
 		},
 		{
-			"path": "."
+			"path": "../ti-extended-basic-esp32"
 		}
 	]
 }
