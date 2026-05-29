@@ -993,12 +993,15 @@ namespace webfiles
         "initMountDrives();"
         "refreshAll();"
         "</script></body></html>";
-      // Send the page as a String. Verified working via curl: the
-      // 2.5 KB HTML/JS payload arrives intact in one HTTP/1.1 200
-      // response. send_P / chunked-callback both stalled earlier
-      // for reasons not fully understood; this is the known-good
-      // path on this fork.
-      req->send(200, "text/html", String(PAGE));
+      // Use the (uint8_t*, len) overload so the response holds a
+      // pointer into the PROGMEM array rather than copying ~8 KB
+      // into a heap String. Under WiFi + FS load the String copy
+      // was failing silently and the page came back content-length:
+      // 0 (white screen in the browser). PAGE is a static const
+      // that outlives any request, so a pointer is safe.
+      req->send(200, "text/html",
+                reinterpret_cast<const uint8_t*>(PAGE),
+                sizeof(PAGE) - 1);
     });
 
     // 404 for anything else. Endpoints handled above: GET /, /api/status,
