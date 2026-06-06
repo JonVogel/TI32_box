@@ -22,3 +22,6 @@
 	path = components/web_files
 	url = https://github.com/JonVogel/TI_Web_Files_ESP.git
 	branch = idf-port
+[submodule "docs"]
+	path = docs
+	url = https://github.com/JonVogel/TI32_docs.git
