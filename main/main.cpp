@@ -1295,31 +1295,51 @@ static void drawCursor(bool visible)
 }
 
 // Sync global cursorCol/cursorRow with the edit state's logical position
+// Map a position in s.buf to a (row, col) on screen. Lines soft-wrap
+// across rows when (startCol + pos) >= COLS — the next character lands
+// at column 0 of the row below. Positions that fall above the top of
+// the screen (when the line has scrolled and startRow went negative)
+// return a negative row; callers must check before writing.
+static inline void editPosToRC(const LineEdit& s, int pos,
+                                int& outRow, int& outCol)
+{
+  int flat = s.startCol + pos;
+  outRow = s.startRow + flat / COLS;
+  outCol = flat % COLS;
+}
+
 static void editSyncCursor(const LineEdit& s)
 {
-  int col = s.startCol + s.pos;
-  if (col >= COLS) col = COLS - 1;
+  int row, col;
+  editPosToRC(s, s.pos, row, col);
+  // If wrapping put the cursor off the visible area (line scrolled past
+  // the top), clamp to the top row so the caret stays visible. Typing-
+  // side scroll-up keeps this from happening in normal use.
+  if (row < 0) row = 0;
+  if (row >= ROWS) row = ROWS - 1;
+  cursorRow = row;
   cursorCol = col;
-  cursorRow = s.startRow;
 }
 
 // Redraw buffer content starting at `fromPos`, plus `eraseExtra` trailing
-// cells (used after a shrink). Single-row only.
+// cells (used after a shrink). Handles soft-wrap across multiple rows.
 static void redrawLineTail(const LineEdit& s, int fromPos, int eraseExtra)
 {
   for (int i = fromPos; i < s.len; i++)
   {
-    int col = s.startCol + i;
-    if (col >= COLS) break;
-    screenBuf[s.startRow][col] = s.buf[i];
-    drawCell(col, s.startRow);
+    int row, col;
+    editPosToRC(s, i, row, col);
+    if (row < 0 || row >= ROWS) continue;
+    screenBuf[row][col] = s.buf[i];
+    drawCell(col, row);
   }
   for (int i = 0; i < eraseExtra; i++)
   {
-    int col = s.startCol + s.len + i;
-    if (col >= COLS) break;
-    screenBuf[s.startRow][col] = ' ';
-    drawCell(col, s.startRow);
+    int row, col;
+    editPosToRC(s, s.len + i, row, col);
+    if (row < 0 || row >= ROWS) continue;
+    screenBuf[row][col] = ' ';
+    drawCell(col, row);
   }
 }
 
@@ -1500,6 +1520,13 @@ static void editBackspace(LineEdit& s)
 }
 
 // Insert or overwrite `c` at the cursor and advance.
+// When `pos` reaches the right edge of the screen, the line soft-wraps
+// to the next row. If that row would be past the bottom of the screen,
+// scroll the whole display up by one — the line's earlier rows shift
+// up with it and `startRow` decrements to track them. Without this the
+// character went into the buffer fine but never reached the screen,
+// and the cursor stuck at the right edge while typing continued
+// invisibly — the bug this fix addresses.
 static void editTypeChar(LineEdit& s, uint8_t c)
 {
   if (s.len >= s.maxLen) return;
@@ -1522,14 +1549,39 @@ static void editTypeChar(LineEdit& s, uint8_t c)
       s.len++;
       s.buf[s.len] = '\0';
     }
-    int col = s.startCol + s.pos;
-    if (col < COLS)
+    int row, col;
+    editPosToRC(s, s.pos, row, col);
+    while (row >= ROWS)
     {
-      screenBuf[s.startRow][col] = c;
-      drawCell(col, s.startRow);
+      scrollUp();
+      s.startRow--;
+      row--;
+    }
+    if (row >= 0)
+    {
+      screenBuf[row][col] = c;
+      drawCell(col, row);
     }
     Serial.write(c);       // mirror to serial for paste visibility
     s.pos++;
+    // Proactive scroll: if the cursor's NEW position would land on a
+    // row past the bottom of the screen, scroll now. Without this, the
+    // cursor jumps onto the bottom row at col 0 — which is where the
+    // ">" prompt character is sitting — and visually the wrap looks
+    // one character late (the prompt still shows below where typing
+    // continues). Scrolling now shifts the prompt + already-typed
+    // content up by one row, so the cursor lands on a freshly-blank
+    // wrap row.
+    {
+      int crow, ccol;
+      editPosToRC(s, s.pos, crow, ccol);
+      while (crow >= ROWS)
+      {
+        scrollUp();
+        s.startRow--;
+        crow--;
+      }
+    }
     editSyncCursor(s);
   }
 }
@@ -1571,9 +1623,16 @@ static EditResult processEditChar(uint8_t c, LineEdit& s)
       strncpy(lastCommandLine, s.buf, sizeof(lastCommandLine) - 1);
       lastCommandLine[sizeof(lastCommandLine) - 1] = '\0';
     }
-    cursorCol = s.startCol + s.len;
-    if (cursorCol >= COLS) cursorCol = COLS - 1;
-    cursorRow = s.startRow;
+    // Position cursor at end of line BEFORE the \n. With soft-wrap,
+    // the last visible cell may be on a row below s.startRow.
+    {
+      int erow, ecol;
+      editPosToRC(s, s.len, erow, ecol);
+      if (erow < 0) erow = 0;
+      if (erow >= ROWS) erow = ROWS - 1;
+      cursorRow = erow;
+      cursorCol = ecol;
+    }
     tiPrintChar('\n');
     editMode = EM_ENTRY;
     lastRecalledLineNum = -1;
