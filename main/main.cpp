@@ -3018,6 +3018,25 @@ void tiWifiStatus(char* out, int outSize)
   }
 }
 
+// Set + persist the friendly hostname that /api/status and the UDP
+// discovery reply advertise. Empty / null clears the override.
+// Called by CALL WIFI("name", n$) and the 3-arg CALL WIFI(ssid, pass,
+// name). Stored alongside ssid/pass in the "tiwifi" NVS namespace.
+void tiWifiSetHostName(const char* name)
+{
+  g_wifiPrefs.begin("tiwifi", false);
+  if (name && *name)
+  {
+    g_wifiPrefs.putString("hostname", name);
+    webfiles::setHostName(name);
+  }
+  else
+  {
+    g_wifiPrefs.remove("hostname");
+  }
+  g_wifiPrefs.end();
+}
+
 void tiWifiOn()
 {
   // ALWAYS bring up the STA netif, even when no credentials are stored,
@@ -3032,7 +3051,15 @@ void tiWifiOn()
   g_wifiPrefs.begin("tiwifi", true /*readOnly*/);
   String ssid = g_wifiPrefs.getString("ssid", "");
   String pass = g_wifiPrefs.getString("pass", "");
+  String name = g_wifiPrefs.getString("hostname", "");
   g_wifiPrefs.end();
+  // Restore the friendly hostname BEFORE webfiles::init() runs so the
+  // library's ensureDefaultHostName() (MAC-derived "TI-XXXX") doesn't
+  // win the race. setHostName is safe to call repeatedly.
+  if (name.length() > 0)
+  {
+    webfiles::setHostName(name.c_str());
+  }
   if (ssid.length() > 0)
   {
     WiFi.begin(ssid.c_str(), pass.c_str());
