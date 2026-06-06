@@ -2961,13 +2961,21 @@ void tiWifiStatus(char* out, int outSize)
 
 void tiWifiOn()
 {
+  // ALWAYS bring up the STA netif, even when no credentials are stored,
+  // so lwIP's tcpip_thread is running before webfiles::init() calls
+  // AsyncWebServer::begin(). Without this, the very first boot of a
+  // device that's never had CALL WIFI run asserts in
+  //   tcpip_api_call /IDF/components/lwip/lwip/src/api/tcpip.c:496
+  //   (Invalid mbox)
+  // and reboot-loops. WiFi.mode() initializes the netif synchronously;
+  // WiFi.begin() (only with creds) is what actually associates.
+  WiFi.mode(WIFI_STA);
   g_wifiPrefs.begin("tiwifi", true /*readOnly*/);
   String ssid = g_wifiPrefs.getString("ssid", "");
   String pass = g_wifiPrefs.getString("pass", "");
   g_wifiPrefs.end();
   if (ssid.length() > 0)
   {
-    WiFi.mode(WIFI_STA);
     WiFi.begin(ssid.c_str(), pass.c_str());
     applyWifiRadioPolicy();
   }
