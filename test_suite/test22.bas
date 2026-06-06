@@ -1,0 +1,40 @@
+5 CALL CLEAR
+10 PRINT "ARITHMETIC:"
+20 PRINT "  7+3 =";7+3
+30 PRINT "  7-3 =";7-3
+40 PRINT "  7*3 =";7*3
+50 PRINT "  7/2 =";7/2
+60 PRINT "  2^10=";2^10
+70 PRINT "COMPARE:"
+80 PRINT "  5=5  =";5=5
+90 PRINT "  5<>6 =";5<>6
+100 PRINT "  5<6  =";5<6
+110 PRINT "  5<=5 =";5<=5
+120 PRINT "  6>=5 =";6>=5
+130 PRINT "LOGIC:"
+140 PRINT "  (1=1)AND(2=2) =";(1=1)AND(2=2)
+150 PRINT "  (1=1)OR(1=2)  =";(1=1)OR(1=2)
+160 PRINT "  (1=1)XOR(2=2) =";(1=1)XOR(2=2)
+170 PRINT "  NOT(1=2)      =";NOT(1=2)
+180 PRINT "STRING:"
+190 A$="HELLO"
+200 B$="WORLD"
+210 PRINT "  A$&B$ = ";A$&B$
+220 PRINT "  LEN(A$&"" ""&B$) =";LEN(A$&" "&B$)
+230 PRINT "ARITH PRECEDENCE:"
+240 PRINT "  2+3*4     =";2+3*4
+250 PRINT "  (2+3)*4   =";(2+3)*4
+260 PRINT "  (4-1)*10/2=";(4-1)*10/2
+270 PRINT "  2^3^2     =";2^3^2
+280 PRINT "  10-2-3    =";10-2-3
+290 PRINT "  20/4/2    =";20/4/2
+300 PRINT "LOGIC PRECEDENCE (NOT>XOR>AND>OR):"
+310 PRINT "  0 AND 1 OR 1       =";0 AND 1 OR 1
+320 PRINT "  (0 AND 1) OR 1     =";(0 AND 1) OR 1
+330 PRINT "  1 OR 0 AND 0       =";1 OR 0 AND 0
+340 PRINT "  1 OR (0 AND 0)     =";1 OR (0 AND 0)
+350 PRINT "  NOT 0 AND 0        =";NOT 0 AND 0
+360 PRINT "  (NOT 0) AND 0      =";(NOT 0) AND 0
+370 PRINT "  1 XOR 1 AND 0      =";1 XOR 1 AND 0
+380 PRINT "  1 XOR (1 AND 0)    =";1 XOR (1 AND 0)
+390 END

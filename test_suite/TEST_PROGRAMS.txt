@@ -1,0 +1,1808 @@
+TI BASIC Simulator — Test Programs
+===================================
+Copy-paste each section into the serial terminal and run with RUN.
+Remember to type NEW before each new program.
+
+
+=== 1. READ / DATA / RESTORE ===
+
+NEW
+5 CALL CLEAR
+10 FOR I=1 TO 5
+20 READ A,B$
+30 PRINT A;B$
+40 NEXT I
+50 DATA 1,"ONE",2,"TWO",3,"THREE"
+60 DATA 4,"FOUR",5,"FIVE"
+70 RESTORE
+80 READ X,Y$
+90 PRINT "FIRST AGAIN:";X;Y$
+100 END
+SAVE Test01
+RUN
+
+Expected:
+ 1 ONE
+ 2 TWO
+ 3 THREE
+ 4 FOUR
+ 5 FIVE
+FIRST AGAIN: 1 ONE
+
+
+=== 2. RANDOMIZE and RND ===
+
+NEW
+5 CALL CLEAR
+10 RANDOMIZE
+20 FOR I=1 TO 5
+30 PRINT INT(RND*100)
+40 NEXT I
+50 END
+SAVE Test02
+RUN
+
+Expected: 5 random integers 0-99 (different each run)
+
+
+=== 3. ON GOTO ===
+
+NEW
+5 CALL CLEAR
+10 FOR I=1 TO 4
+20 ON I GOTO 100,200,300,400
+100 PRINT "ONE" :: GOTO 500
+200 PRINT "TWO" :: GOTO 500
+300 PRINT "THREE" :: GOTO 500
+400 PRINT "FOUR"
+500 NEXT I
+510 END
+SAVE Test03
+RUN
+
+Expected:
+ONE
+TWO
+THREE
+FOUR
+
+
+=== 4. ON GOSUB ===
+
+NEW
+5 CALL CLEAR
+10 FOR I=1 TO 3
+20 ON I GOSUB 100,200,300
+30 PRINT "BACK IN MAIN"
+40 NEXT I
+50 END
+100 PRINT "SUB A" :: RETURN
+200 PRINT "SUB B" :: RETURN
+300 PRINT "SUB C" :: RETURN
+SAVE Test04
+RUN
+
+
+=== 5. CALL KEY ===
+
+NEW
+5 CALL CLEAR
+10 PRINT "PRESS ANY KEY (Q TO QUIT)"
+20 CALL KEY(0,K,S)
+30 IF S<1 THEN 20
+40 IF K=81 THEN 100
+50 IF K=113 THEN 100
+60 PRINT "YOU PRESSED:";K;CHR$(K)
+70 GOTO 20
+100 PRINT "BYE"
+110 END
+SAVE Test05
+RUN
+
+
+=== 6. Math functions: MAX, MIN, PI ===
+
+NEW
+5 CALL CLEAR
+10 PRINT "MAX(3,7)=";MAX(3,7)
+20 PRINT "MIN(3,7)=";MIN(3,7)
+30 PRINT "PI=";PI
+40 PRINT "SIN(PI/2)=";SIN(PI/2)
+50 PRINT "COS(0)=";COS(0)
+60 END
+SAVE Test06
+RUN
+
+Expected:
+MAX(3,7)= 7
+MIN(3,7)= 3
+PI= 3.14159
+SIN(PI/2)= 1
+COS(0)= 1
+
+
+=== 7. POS function ===
+
+NEW
+5 CALL CLEAR
+10 A$="HELLO WORLD HELLO"
+20 PRINT POS(A$,"WORLD",1)
+30 PRINT POS(A$,"HELLO",1)
+40 PRINT POS(A$,"HELLO",5)
+50 PRINT POS(A$,"XYZ",1)
+60 END
+SAVE Test07
+RUN
+
+Expected:
+ 7
+ 1
+ 13
+ 0
+
+
+=== 8. TAB() ===
+
+NEW
+5 CALL CLEAR
+10 PRINT TAB(3);"A";TAB(10);"B";TAB(17);"C"
+20 PRINT "COL:"
+30 print "1234567890123456789"
+40 END
+SAVE Test08
+RUN
+
+
+=== 9. DISPLAY AT ===
+
+NEW
+5 CALL CLEAR
+10 CALL CLEAR
+20 DISPLAY AT(5,8):"HELLO"
+30 DISPLAY AT(10,4):"WORLD"
+40 DISPLAY AT(15,1):"BOTTOM LEFT"
+50 CALL KEY(0,K,S)
+60 IF S<1 THEN 50
+70 END
+SAVE Test09
+RUN
+
+
+=== 10. ACCEPT AT ===
+
+NEW
+5 CALL CLEAR
+10 CALL CLEAR
+20 DISPLAY AT(5,2):"ENTER NAME:"
+30 ACCEPT AT(5,14):N$
+40 DISPLAY AT(10,2):"HELLO, "
+50 DISPLAY AT(10,10):N$
+60 CALL KEY(0,K,S)
+70 IF S<1 THEN 60
+80 END
+SAVE Test10
+RUN
+
+
+=== 11. 1D Arrays (numeric) ===
+
+NEW
+5 CALL CLEAR
+10 DIM A(10)
+20 FOR I=0 TO 10
+30 A(I)=I*I
+40 NEXT I
+50 FOR I=0 TO 10
+60 PRINT I;A(I)
+70 NEXT I
+80 END
+SAVE Test11
+RUN
+
+
+=== 12. 2D Arrays ===
+
+NEW
+5 CALL CLEAR
+10 DIM M(3,3)
+20 FOR I=0 TO 3
+30 FOR J=0 TO 3
+40 M(I,J)=I*10+J
+50 NEXT J
+60 NEXT I
+70 FOR I=0 TO 3
+80 FOR J=0 TO 3
+90 PRINT M(I,J);
+100 NEXT J
+110 PRINT
+120 NEXT I
+130 END
+SAVE Test12
+RUN
+
+
+=== 13. String arrays ===
+
+NEW
+5 CALL CLEAR
+10 DIM N$(5)
+20 N$(1)="ALICE"
+30 N$(2)="BOB"
+40 N$(3)="CAROL"
+50 N$(4)="DAVE"
+60 N$(5)="EVE"
+70 FOR I=1 TO 5
+80 PRINT I;N$(I)
+90 NEXT I
+100 END
+SAVE Test13
+RUN
+
+
+=== 14. OPTION BASE ===
+
+NEW
+5 CALL CLEAR
+10 OPTION BASE 1
+20 DIM A(5)
+30 FOR I=1 TO 5
+40 A(I)=I*10
+50 NEXT I
+60 FOR I=1 TO 5
+70 PRINT A(I)
+80 NEXT I
+90 END
+SAVE Test14
+RUN
+
+
+=== 15. Graphics: CALL CHAR, HCHAR, VCHAR, COLOR ===
+
+NEW
+5 CALL CLEAR
+10 CALL CLEAR
+20 CALL CHAR(96,"183C7EFFFF7E3C18")
+30 CALL COLOR(13,9,2)
+40 CALL HCHAR(12,1,96,32)
+50 CALL VCHAR(1,17,96,24)
+60 CALL KEY(0,K,S)
+70 IF S<1 THEN 60
+80 END
+SAVE Test15
+RUN
+
+Expected: Diamond shapes in red on black, forming a cross.
+
+
+=== 16. CALL SCREEN ===
+
+NEW
+5 CALL CLEAR
+10 FOR C=2 TO 16
+20 CALL SCREEN(C)
+30 DISPLAY AT(12,10):"COLOR";C
+40 CALL KEY(0,K,S)
+50 IF S<1 THEN 40
+60 NEXT C
+70 END
+SAVE Test16
+RUN
+
+
+=== 17. LINPUT ===
+
+NEW
+5 CALL CLEAR
+10 PRINT "TYPE A SENTENCE WITH COMMAS"
+20 LINPUT S$
+30 PRINT "YOU TYPED: ";S$
+40 END
+SAVE Test17
+RUN
+
+
+=== 18. String functions all-in-one ===
+
+NEW
+5 CALL CLEAR
+10 A$="hello world"
+20 PRINT "LEN:";LEN(A$)
+30 PRINT "LEFT5:";SEG$(A$,1,5)
+40 PRINT "UPPER:";CHR$(ASC(A$)-32);SEG$(A$,2,10)
+50 PRINT "REPEAT:";RPT$("-",20)
+60 PRINT "VAL:";VAL("42.5")
+70 PRINT "STR:";STR$(3.14159)
+80 PRINT "CONCAT:";A$&" test"
+90 END
+SAVE Test18
+RUN
+
+
+=== 19. Nested loops with expressions ===
+
+NEW
+5 CALL CLEAR
+10 FOR I=1 TO 3
+20 FOR J=1 TO 3
+30 PRINT I*10+J;
+40 NEXT J
+50 PRINT
+60 NEXT I
+70 END
+SAVE Test19
+RUN
+
+
+=== 20. Comprehensive graphics demo ===
+
+Uses a different character from each charset 9-16 so CALL COLOR can
+give each stripe its own color (TI's per-set coloring limitation).
+
+NEW
+5 CALL CLEAR
+10 CALL SCREEN(2)
+20 REM DEFINE A SOLID BLOCK IN EACH OF 8 CHARACTER SETS
+30 FOR I=0 TO 7
+40 CN=96+I*8
+50 CALL CHAR(CN,"FFFFFFFFFFFFFFFF")
+60 NEXT I
+70 REM EACH SET GETS ITS OWN FOREGROUND COLOR
+80 CALL COLOR(9,9,1)
+90 CALL COLOR(10,3,1)
+100 CALL COLOR(11,12,1)
+110 CALL COLOR(12,14,1)
+120 CALL COLOR(13,5,1)
+130 CALL COLOR(14,10,1)
+140 CALL COLOR(15,15,1)
+150 CALL COLOR(16,16,1)
+160 REM DRAW 8 STRIPES, TWO ROWS EACH
+170 FOR I=0 TO 7
+180 CN=96+I*8
+190 CALL HCHAR(5+I*2,1,CN,32)
+200 CALL HCHAR(6+I*2,1,CN,32)
+210 NEXT I
+220 DISPLAY AT(1,10):"COLOR STRIPES"
+230 CALL KEY(0,K,S)
+240 IF S<1 THEN 230
+250 END
+SAVE Test20
+RUN
+
+
+=== 21. DEF FN user-defined functions ===
+
+Defines a numeric function and a string function, then calls each.
+Expected:
+  FNSQ(5)= 25
+  FNCUBE(3)= 27
+  FNHELLO$("WORLD")=HELLO, WORLD!
+
+NEW
+5 CALL CLEAR
+10 DEF FNSQ(X)=X*X
+20 DEF FNCUBE(X)=X*X*X
+30 DEF FNHELLO$(N$)="HELLO, "&N$&"!"
+40 PRINT "FNSQ(5)=";FNSQ(5)
+50 PRINT "FNCUBE(3)=";FNCUBE(3)
+60 PRINT "FNHELLO$(""WORLD"")=";FNHELLO$("WORLD")
+70 END
+SAVE Test21
+RUN
+
+
+=== 22. Operators ===
+
+Arithmetic, comparison (including two-token <= >= <>), logical, concat.
+Comparisons return -1 for true, 0 for false (TI convention).
+
+NEW
+5 CALL CLEAR
+10 PRINT "ARITHMETIC:"
+20 PRINT "  7+3 =";7+3
+30 PRINT "  7-3 =";7-3
+40 PRINT "  7*3 =";7*3
+50 PRINT "  7/2 =";7/2
+60 PRINT "  2^10=";2^10
+70 PRINT "COMPARE:"
+80 PRINT "  5=5  =";5=5
+90 PRINT "  5<>6 =";5<>6
+100 PRINT "  5<6  =";5<6
+110 PRINT "  5<=5 =";5<=5
+120 PRINT "  6>=5 =";6>=5
+130 PRINT "LOGIC:"
+140 PRINT "  (1=1)AND(2=2) =";(1=1)AND(2=2)
+150 PRINT "  (1=1)OR(1=2)  =";(1=1)OR(1=2)
+160 PRINT "  (1=1)XOR(2=2) =";(1=1)XOR(2=2)
+170 PRINT "  NOT(1=2)      =";NOT(1=2)
+180 PRINT "STRING:"
+190 A$="HELLO"
+200 B$="WORLD"
+210 PRINT "  A$&B$ = ";A$&B$
+220 PRINT "  LEN(A$&"" ""&B$) =";LEN(A$&" "&B$)
+230 PRINT "ARITH PRECEDENCE:"
+240 PRINT "  2+3*4     =";2+3*4
+250 PRINT "  (2+3)*4   =";(2+3)*4
+260 PRINT "  (4-1)*10/2=";(4-1)*10/2
+270 PRINT "  2^3^2     =";2^3^2
+280 PRINT "  10-2-3    =";10-2-3
+290 PRINT "  20/4/2    =";20/4/2
+300 PRINT "LOGIC PRECEDENCE (NOT>XOR>AND>OR):"
+310 PRINT "  0 AND 1 OR 1       =";0 AND 1 OR 1
+320 PRINT "  (0 AND 1) OR 1     =";(0 AND 1) OR 1
+330 PRINT "  1 OR 0 AND 0       =";1 OR 0 AND 0
+340 PRINT "  1 OR (0 AND 0)     =";1 OR (0 AND 0)
+350 PRINT "  NOT 0 AND 0        =";NOT 0 AND 0
+360 PRINT "  (NOT 0) AND 0      =";(NOT 0) AND 0
+370 PRINT "  1 XOR 1 AND 0      =";1 XOR 1 AND 0
+380 PRINT "  1 XOR (1 AND 0)    =";1 XOR (1 AND 0)
+390 END
+SAVE Test22
+RUN
+
+
+=== 23. Math transcendentals ===
+
+TAN, ATN, LOG, EXP, SQR. Values checked against known constants.
+Expected: SQR(4)=2, TAN(0)=0, ATN(1)*4=PI, LOG(1)=0, EXP(0)=1,
+and EXP(LOG(X))=X as an inverse-check.
+
+NEW
+5 CALL CLEAR
+10 PRINT "SQR:"
+20 PRINT "  SQR(0) =";SQR(0)
+30 PRINT "  SQR(1) =";SQR(1)
+40 PRINT "  SQR(4) =";SQR(4)
+50 PRINT "  SQR(2) =";SQR(2)
+60 PRINT "TAN:"
+70 PRINT "  TAN(0)      =";TAN(0)
+80 PRINT "  TAN(PI/4)   =";TAN(PI/4)
+90 PRINT "ATN:"
+100 PRINT "  ATN(0)      =";ATN(0)
+110 PRINT "  ATN(1)      =";ATN(1)
+120 PRINT "  ATN(1)*4    =";ATN(1)*4
+130 PRINT "LOG:"
+140 PRINT "  LOG(1)      =";LOG(1)
+150 PRINT "  LOG(EXP(1)) =";LOG(EXP(1))
+160 PRINT "EXP:"
+170 PRINT "  EXP(0)      =";EXP(0)
+180 PRINT "  EXP(1)      =";EXP(1)
+190 PRINT "  EXP(LOG(5)) =";EXP(LOG(5))
+200 END
+SAVE Test23
+RUN
+
+
+=== 24. Graphics introspection ===
+
+CALL VERSION returns 110 (Extended BASIC v1.10).
+CALL CHARPAT(code, A$) reads a character's 16-char hex pattern.
+CALL CHARSET restores chars 32-127 to their ROM defaults.
+CALL GCHAR(row, col, var) reads the character code on screen.
+We write a known char with HCHAR first so we can verify GCHAR.
+
+NEW
+5 CALL CLEAR
+10 CALL VERSION(V)
+20 PRINT "VERSION =";V
+30 CALL CHARPAT(65,A$)
+40 PRINT "CHARPAT(65) BEFORE=";A$
+50 CALL CHAR(65,"FF00FF00FF00FF00")
+60 CALL CHARPAT(65,A$)
+70 PRINT "CHARPAT(65) AFTER =";A$
+80 CALL CHARSET
+90 CALL CHARPAT(65,A$)
+100 PRINT "CHARPAT(65) RESET =";A$
+110 CALL HCHAR(12,5,42)
+120 CALL GCHAR(12,5,C)
+130 PRINT "GCHAR(12,5) =";C
+140 CALL GCHAR(12,6,C)
+150 PRINT "GCHAR(12,6) =";C
+160 END
+SAVE Test24
+RUN
+
+
+=== 25. STOP ===
+
+STOP halts program execution. The line after STOP should NOT run.
+
+NEW
+5 CALL CLEAR
+10 PRINT "BEFORE STOP"
+20 STOP
+30 PRINT "SHOULD NOT PRINT"
+40 END
+SAVE Test25
+RUN
+
+
+=== 26. MERGE ===
+
+Two-part test. First build and save MergeA, then NEW and build a second
+program, MERGE the first, and LIST to confirm both sets of lines are
+present. Lines are kept in sorted order by number.
+
+--- Part A: build MergeA and save ---
+
+NEW
+100 PRINT "FROM A1"
+110 PRINT "FROM A2"
+120 END
+SAVE MergeA
+
+--- Part B: build second program and merge ---
+
+NEW
+10 PRINT "FROM B1"
+20 PRINT "FROM B2"
+30 END
+MERGE MergeA
+LIST
+
+Expected LIST output:
+10 PRINT "FROM B1"
+20 PRINT "FROM B2"
+30 END
+100 PRINT "FROM A1"
+110 PRINT "FROM A2"
+120 END
+
+RUN stops at line 30 END (only B prints):
+FROM B1
+FROM B2
+
+
+=== 27. NUM / NUMBER auto-line-numbering ===
+
+NUM enters auto-line-number mode. Each new input line is pre-filled
+with an incrementing number (default start=100, increment=10). Press
+Enter on the blank auto-filled line to exit NUM mode.
+
+Type these exactly, pressing Enter between each (the "100 ", "110 ",
+etc. appears automatically):
+
+NEW
+NUM
+X=1
+Y=2
+PRINT X+Y
+<press Enter on the auto-filled "130 " blank line to exit NUM>
+LIST
+RUN
+
+Expected LIST:
+100 X=1
+110 Y=2
+120 PRINT X+Y
+
+Expected RUN:
+ 3
+
+Optional: to start at a different line / increment, use `NUM 10,5`,
+which pre-fills 10, 15, 20, …
+
+
+=== 28. RESEQUENCE / RES ===
+
+Renumbers all program lines and updates GOTO/GOSUB/THEN/ELSE/RESTORE
+targets so cross-references stay intact. Defaults: start=100, incr=10.
+
+NEW
+1 PRINT "LINE 1"
+5 GOTO 37
+15 PRINT "LINE 15 - SHOULD BE SKIPPED"
+37 PRINT "JUMPED TO 37"
+42 GOSUB 99
+43 END
+99 PRINT "SUB CALLED" :: RETURN
+RES
+
+After RES, LIST should show lines renumbered 100,110,... with GOTO
+and GOSUB targets updated to match the new numbers:
+
+100 PRINT "LINE 1"
+110 GOTO 140
+120 PRINT "LINE 15 - SHOULD BE SKIPPED"
+130 END                 (wait — original 37 became 130? let's recount)
+
+Actual renumber: 1→100, 5→110, 15→120, 37→130, 42→140, 43→150, 99→160
+So LIST shows:
+100 PRINT "LINE 1"
+110 GOTO 130
+120 PRINT "LINE 15 - SHOULD BE SKIPPED"
+130 PRINT "JUMPED TO 37"
+140 GOSUB 160
+150 END
+160 PRINT "SUB CALLED" :: RETURN
+
+RUN output:
+LINE 1
+JUMPED TO 37
+SUB CALLED
+
+Optional: try `RES 10,10` to renumber starting at 10 with increment 10.
+
+
+=== 29. TRACE / UNTRACE / BREAK / UNBREAK ===
+
+TRACE prints <lineN> before each line executes. UNTRACE disables it.
+BREAK stops the program at specified line(s). UNBREAK clears them.
+BREAK outputs "* BREAKPOINT AT nn" when hit.
+
+NEW
+10 FOR I=1 TO 3
+20 PRINT "I=";I
+30 NEXT I
+40 END
+SAVE TraceTest
+
+Paste these one at a time and observe the serial output.
+
+--- Part A: plain RUN (no trace, no break) ---
+RUN
+(Expected: I= 1 / I= 2 / I= 3)
+
+--- Part B: TRACE mode ---
+TRACE
+RUN
+(Expected: <10><20>I= 1<30><20>I= 2<30><20>I= 3<30><40>)
+
+--- Part C: UNTRACE and run again ---
+UNTRACE
+RUN
+(Expected: same as Part A; no <n> markers)
+
+--- Part D: set breakpoint at line 20 ---
+BREAK 20
+RUN
+(Expected: stops with "* BREAKPOINT AT 20" before line 20 runs the
+first time.)
+
+--- Part E: clear breakpoint ---
+UNBREAK
+RUN
+(Expected: runs to completion again, no breakpoint halt.)
+
+
+=== 30. SUB / SUBEND / SUBEXIT / CALL sub(args) ===
+
+Subprogram support: numeric + string parameters, pass-by-value for
+expressions and pass-by-value-result for bare variable arguments
+(sub's final param value is copied back into the caller's variable
+at SUBEND / SUBEXIT). No local scope yet — params leak into caller.
+Nesting up to 8 deep. SUBs are typically placed at end of program;
+main flow skips past them automatically.
+
+NEW
+5 CALL CLEAR
+10 CALL GREET("ALICE")
+20 CALL ADD(5,7,R)
+30 PRINT "SUM=";R
+35 X$="WORLD" :: CALL SHOUT(X$) :: PRINT X$
+40 CALL MAYBE(0)
+50 CALL MAYBE(1)
+60 END
+100 SUB GREET(NAME$)
+110 PRINT "HELLO, ";NAME$
+120 SUBEND
+200 SUB ADD(A,B,C)
+210 C=A+B
+220 SUBEND
+250 SUB SHOUT(S$)
+260 S$=S$&"!"
+270 SUBEND
+300 SUB MAYBE(F)
+310 IF F=0 THEN 330
+320 PRINT "F IS TRUE"
+330 IF F=0 THEN SUBEXIT
+340 PRINT "AFTER CHECK"
+350 SUBEND
+SAVE Test30
+RUN
+
+Expected:
+HELLO, ALICE
+SUM= 12
+WORLD!
+F IS TRUE
+AFTER CHECK
+
+
+=== 31. Editor polish: LIST range / CONTINUE / DELETE file ===
+
+--- Part A: LIST range ---
+NEW
+10 PRINT "A"
+20 PRINT "B"
+30 PRINT "C"
+40 PRINT "D"
+50 PRINT "E"
+LIST 30
+(Expected: only line 30)
+LIST 20-40
+(Expected: lines 20, 30, 40)
+LIST 30-
+(Expected: lines 30, 40, 50)
+LIST -20
+(Expected: lines 10, 20)
+LIST
+(Expected: all five lines)
+
+--- Part B: CONTINUE after STOP ---
+NEW
+10 PRINT "BEFORE"
+20 STOP
+30 PRINT "AFTER"
+RUN
+(Expected: BEFORE, then "* STOPPED AT 20")
+CON
+(Expected: AFTER, then * READY *)
+
+--- Part C: CONTINUE after breakpoint ---
+NEW
+10 PRINT "ONE"
+20 PRINT "TWO"
+30 PRINT "THREE"
+BREAK 20
+RUN
+(Expected: ONE, then "* BREAKPOINT AT 20")
+CON
+(Expected: TWO, THREE, then * READY *)
+UNBREAK
+
+--- Part D: CONTINUE refused after END / NEW ---
+NEW
+10 PRINT "X"
+20 END
+RUN
+CON
+(Expected: "* CAN'T CONTINUE")
+
+--- Part E: DELETE a file ---
+NEW
+10 PRINT "HI"
+SAVE TESTDEL
+DIR
+(Expected: TESTDEL.bas listed)
+DELETE TESTDEL
+(Expected: DELETED: /TESTDEL.bas)
+DIR
+(Expected: TESTDEL.bas is gone)
+DELETE TESTDEL
+(Expected: * FILE ERROR)
+
+
+=== 32. `!` tail comment + PC-style backspace ===
+
+--- Part A: ! stops rest-of-line processing ---
+NEW
+10 PRINT "HI"! testing
+RUN
+(Expected: just `HI` — NOT `HI testing`)
+LIST
+(Expected: `10 PRINT "HI"! testing` — round-trip preserves comment text)
+
+20 PRINT "A" :: PRINT "B" ! dead code :: PRINT "C"
+RUN
+(Expected: A, then B — `C` must not print, the rest of the line is dropped)
+
+--- Part B: Backspace on BLE / serial ---
+Type any line, press BKSP while cursor is past-the-end or mid-line.
+Expected: char to the left of the cursor is deleted; cursor moves left
+by one; tail (if any) shifts left. Works whether the key sends 0x7F
+(modern BLE HID + most USB-serial terminals) or is fed through the
+BKSP path internally.
+
+(This is the PC convention, not TI. FCTN+S still moves cursor left
+without deleting — that channel is unchanged.)
+
+
+=== 33. ON BREAK / ON ERROR / ON WARNING ===
+
+--- Part A: ON ERROR <line> — trap and recover ---
+NEW
+10 ON ERROR 200
+20 A=1/0
+30 PRINT "NOT REACHED"
+40 END
+200 PRINT "TRAPPED"
+210 CALL ERR(N,S,C,L)
+220 PRINT "ERR ON";L
+230 END
+RUN
+
+Expected:
+TRAPPED
+ERR ON 20
+
+--- Part B: ON ERROR NEXT — skip bad line ---
+NEW
+10 ON ERROR NEXT
+20 A=1/0
+30 PRINT "STILL GOING"
+RUN
+
+Expected:
+STILL GOING
+
+--- Part C: ON ERROR disarms inside handler ---
+NEW
+10 ON ERROR 100
+20 A=1/0
+100 PRINT "HANDLER"
+110 B=1/0
+120 PRINT "NOT REACHED"
+RUN
+
+Expected: HANDLER, then a real `* DIVIDE BY ZERO IN 110` error
+(the handler did not re-trap because ON ERROR was disarmed on entry).
+
+--- Part D: ON BREAK NEXT — ignore break ---
+NEW
+10 ON BREAK NEXT
+20 FOR I=1 TO 1000000
+30 NEXT I
+40 PRINT "DONE"
+RUN
+(While running, press ESC / Ctrl+C / CLEAR. Program should ignore
+the break and eventually print DONE.)
+
+--- Part E: ON WARNING semantics ---
+Divide-by-zero is a warning in TI XB: the evaluator substitutes ±MAX
+(1.4E38) and signals the warning. ON WARNING controls what happens.
+
+NEW
+10 ON WARNING PRINT
+20 A=1/0
+30 PRINT "A=";A
+RUN
+(Expected:
+  * WARNING: NUMBER TOO BIG IN 20
+  A= 1.4E38 )
+
+NEW
+10 ON WARNING NEXT
+20 A=1/0
+30 PRINT "A=";A
+RUN
+(Expected: just `A= 1.4E38` — warning suppressed.)
+
+NEW
+10 ON WARNING STOP
+20 A=1/0
+30 PRINT "NOT REACHED"
+RUN
+(Expected: `* WARNING: NUMBER TOO BIG IN 20` then halt.)
+
+--- Part F: ON WARNING STOP + ON ERROR traps upgraded warning ---
+NEW
+10 ON ERROR 100
+20 ON WARNING STOP
+30 A=1/0
+40 PRINT "NOT REACHED"
+100 PRINT "TRAPPED"
+110 END
+RUN
+(Expected: `TRAPPED` — STOP promotes the warning to an error, and
+ON ERROR jumps to the handler.)
+
+
+=== 34. File I/O — OPEN / CLOSE / PRINT # / INPUT # / LINPUT # / EOF ===
+
+Device prefix routing:
+  FLASH.NAME — internal LittleFS
+  DSK1.NAME   — SD card (TF slot)
+
+Only DISPLAY + SEQUENTIAL + INPUT/OUTPUT/APPEND/UPDATE are functional.
+INTERNAL, RELATIVE, FIXED are parsed and ignored.
+
+--- Part A: write a file on FLASH ---
+NEW
+10 OPEN #1:"FLASH.TEST",OUTPUT
+20 FOR I=1 TO 3
+30 PRINT #1:I;"SCORE";I*100
+40 NEXT I
+50 CLOSE #1
+60 PRINT "WROTE TEST"
+RUN
+DIR FLASH
+(Expected: TEST listed with non-zero size.)
+
+--- Part B: read it back ---
+NEW
+10 OPEN #1:"FLASH.TEST",INPUT
+20 IF EOF(1) THEN 60
+30 LINPUT #1:L$
+40 PRINT L$
+50 GOTO 20
+60 CLOSE #1
+RUN
+
+Expected: three lines like ` 1 SCORE  100 ` etc.
+
+--- Part C: append ---
+NEW
+10 OPEN #1:"FLASH.TEST",APPEND
+20 PRINT #1:"EXTRA"
+30 CLOSE #1
+40 OPEN #1:"FLASH.TEST",INPUT
+50 IF EOF(1) THEN 80
+60 LINPUT #1:L$ :: PRINT L$
+70 GOTO 50
+80 CLOSE #1
+RUN
+(Expected: all original lines plus `EXTRA`.)
+
+--- Part D: parse numbers / strings with INPUT # ---
+NEW
+10 OPEN #1:"FLASH.CSV",OUTPUT
+20 PRINT #1:"ALICE,42,3.14"
+30 PRINT #1:"BOB,17,2.71"
+40 CLOSE #1
+50 OPEN #1:"FLASH.CSV",INPUT
+60 IF EOF(1) THEN 100
+70 INPUT #1:N$,A,P
+80 PRINT N$;" AGE";A;"PI";P
+90 GOTO 60
+100 CLOSE #1
+RUN
+
+Expected:
+ALICE AGE 42 PI 3.14
+BOB AGE 17 PI 2.71
+
+--- Part E: DSK1 device (skip if no SD card) ---
+NEW
+10 OPEN #1:"DSK1.HELLO",OUTPUT
+20 PRINT #1:"FROM SD"
+30 CLOSE #1
+40 OPEN #1:"DSK1.HELLO",INPUT
+50 LINPUT #1:X$ :: PRINT X$
+60 CLOSE #1
+RUN
+DIR DSK1
+(Expected — with SD inserted: `FROM SD` and HELLO listed under DSK1.
+Without SD: `* FILE ERROR` on line 10 / `* DEVICE NOT PRESENT` on DIR.)
+
+--- Part F: CAT / DIR with device ---
+CAT
+(Expected: FLASH: with the TEST / CSV files.)
+CAT FLASH
+(Same as above.)
+CAT SDCARD
+(Raw SD card root — should list any .dsk images you've copied.)
+DIR SDCARD
+(`DIR` is a habit alias for `CAT`. Same output.)
+CAT DSK1
+(Phase 1: `* NOT MOUNTED` until you MOUNT a .dsk image; see Test 35.)
+
+
+=== 35. V9T9 .dsk image mount + read (Phase 1) ===
+
+Put a V9T9 .dsk file on the SD card (root directory). Any .dsk from
+WHTech, TI-GameShelf, Classic99 archives will do. SSSD (90 KB),
+DSSD (180 KB), DSDD (360 KB) all work as long as they're the plain
+sector-dump variety (PC99 format will be rejected).
+
+--- Part A: mount and list ---
+CAT SDCARD
+(Expected: GAMES.DSK or whatever is on the card.)
+MOUNT DSK1 SDCARD.GAMES.DSK
+(Expected: `DSK1 = /GAMES.DSK  [VOLNAME  360 sectors]` or similar.)
+CAT DSK1
+(Expected: header `DSK1 [VOLNAME]:` followed by the TI file names
+inside the image, 10 chars each.)
+
+--- Part B: read a DIS/VAR file from the image ---
+NEW
+10 OPEN #1:"DSK1.README",INPUT
+20 IF EOF(1) THEN 50
+30 LINPUT #1:L$
+40 PRINT L$ :: GOTO 20
+50 CLOSE #1
+RUN
+(Replace README with an actual DIS/VAR filename from DIR DSK1.
+Expected: file contents printed line by line.)
+
+--- Part C: persistence ---
+MOUNT DSK1 SDCARD.GAMES.DSK
+(reboot the device — unplug / re-plug or press RESET)
+CAT DSK1
+(Expected: still listed as mounted after reboot.)
+
+--- Part D: unmount ---
+UNMOUNT DSK1
+CAT DSK1
+(Expected: `* NOT MOUNTED`.)
+
+--- Part E: short-form MOUNT (auto-append .DSK) ---
+MOUNT DSK2 GAMES
+(Equivalent to `MOUNT DSK2 SDCARD.GAMES.DSK` — extension and path
+filled in automatically.)
+
+Phase 1 limits: read-only, DIS/VAR only. PROGRAM format (SAVE/OLD),
+OUTPUT/APPEND mode, and INTERNAL/FIXED files come in Phase 2/3.
+
+
+=== 36. Create a V9T9 disk + write + copy (Phase 2) ===
+
+Phase 2 adds: NEWDISK (create blank image in FLASH or SDCARD),
+OPEN #n:"DSK1.NAME",OUTPUT (DIS/VAR writer), COPY <src> <dst>.
+
+--- Part A: create a blank disk on FLASH ---
+NEWDISK FLASH.WORK.DSK "WORK"
+(Expected: `CREATED SSSD FLASH.WORK.DSK [WORK  360 sectors]`)
+MOUNT DSK1 FLASH.WORK.DSK
+CAT DSK1
+(Expected: header with volume name WORK, then `(empty)`.)
+
+--- Part B: write a DIS/VAR file into the mounted disk ---
+NEW
+10 OPEN #1:"DSK1.HELLO",OUTPUT
+20 PRINT #1:"LINE ONE"
+30 PRINT #1:"LINE TWO"
+40 PRINT #1:"LINE THREE"
+50 CLOSE #1
+60 PRINT "DONE"
+RUN
+CAT DSK1
+(Expected: HELLO listed as DIS/VAR 80 with a small sector count.)
+
+--- Part C: read it back to prove the write worked ---
+NEW
+10 OPEN #1:"DSK1.HELLO",INPUT
+20 IF EOF(1) THEN 50
+30 LINPUT #1:L$
+40 PRINT L$ :: GOTO 20
+50 CLOSE #1
+RUN
+
+Expected:
+LINE ONE
+LINE TWO
+LINE THREE
+
+--- Part D: create a second disk on SD and COPY between drives ---
+NEWDISK SDCARD.BACKUP.DSK "BACKUP" DSSD
+MOUNT DSK2 SDCARD.BACKUP.DSK
+COPY DSK1.HELLO DSK2.HELLO
+CAT DSK2
+(Expected: HELLO present on DSK2 with same size.)
+
+--- Part E: COPY in all four directions ---
+COPY FLASH.SOMENAME DSK2.OTHER
+COPY DSK1.HELLO FLASH.EXPORT
+COPY SDCARD.FOO FLASH.FOO
+(Each should print `COPIED N LINES` on success.)
+
+--- Part F: persistence ---
+MOUNT DSK1 FLASH.WORK.DSK
+(reboot)
+CAT DSK1
+(Expected: WORK still mounted with HELLO intact.)
+
+Phase 2 limits: DIS/VAR only. PROGRAM format (for SAVE/OLD on DSK),
+INTERNAL, FIXED, APPEND, and UPDATE are Phase 3.
+
+
+=== 37. PROGRAM format — OLD / SAVE on .dsk images (Phase 3) ===
+
+--- Part A: SAVE a program to DSK ---
+MOUNT DSK1 SDCARD.WORK.DSK
+NEW
+10 PRINT "HELLO FROM DSK"
+20 FOR I=1 TO 3
+30 PRINT I
+40 NEXT I
+50 END
+SAVE "DSK1.SAMPLE"
+(Expected: `SAVED: DSK1.SAMPLE (N bytes)`)
+CAT DSK1
+(Expected: `SAMPLE  PROGRAM  N` in the listing.)
+
+--- Part B: reload it ---
+NEW
+LIST
+(Expected: empty listing.)
+OLD "DSK1.SAMPLE"
+(Expected: `LOADED: DSK1.SAMPLE (5 lines)`)
+LIST
+(Expected: all 5 lines intact.)
+RUN
+(Expected: `HELLO FROM DSK` then 1, 2, 3.)
+
+--- Part C: load a real TI PROGRAM file ---
+MOUNT DSK2 SDCARD.disk1.dsk
+CAT DSK2
+(Find a small PROGRAM file, e.g. LOAD on DSKUTILS.)
+OLD "DSK2.LOAD"
+LIST
+(Expected: the LOAD utility's BASIC source rendered through our
+detokenizer. Some lines may show weirdness if TI used features we
+don't yet support, but the token stream should round-trip.)
+
+Phase 3 limits: PROGRAM only. INTERNAL and FIXED file types deferred.
+
+
+=== 38. Sprites — Phase 1: create / delete / locate / pattern / magnify ===
+
+--- Part 0: CALL SPEED throttle smoke test ---
+Verify that the per-statement throttle slows execution. Each PRINT is
+a separate statement, so 5 prints with `::` between each = 5 throttle
+delays per loop iteration.
+
+NEW
+10 CALL SPEED(0)
+20 PRINT "FAST 1" :: PRINT "FAST 2" :: PRINT "FAST 3"
+30 CALL SPEED(500000)
+40 PRINT "SLOW 1" :: PRINT "SLOW 2" :: PRINT "SLOW 3"
+50 CALL SPEED(0)
+RUN
+
+(Expected: the three FAST lines flash up almost instantly; the three
+SLOW lines space out at half a second each. After RUN finishes, type
+`CALL SPEED(0)` at the prompt to make sure speed comes back to normal
+for editing.)
+
+--- Part A: create a sprite ---
+NEW
+10 CALL CLEAR
+20 CALL SPRITE(#1, 65, 2, 96, 128)
+30 GOTO 30
+RUN
+(Expected: letter A (char 65) in black appears near the middle of the
+screen and stays. Press ESC / CTRL-C / CLEAR to break out.)
+
+--- Part B: move with CALL LOCATE ---
+NEW
+5  CALL SPEED(300)
+10 CALL CLEAR
+20 CALL SPRITE(#1, 83, 7, 50, 50)
+30 FOR R=50 TO 150 STEP 10
+40 CALL LOCATE(#1, R, R)
+50 DISPLAY AT(1,1):"R=";R;"  "
+60 FOR I=1 TO 200 :: NEXT I
+70 NEXT R
+REM 80 GOTO 80
+RUN
+(Expected: top-left shows "R=50", "R=60" ... "R=150" as the sprite
+slides diagonally. ESC to break. If R increments but the S stays
+put, CALL LOCATE has a bug.)
+
+--- Part C1: CALL MAGNIFY 2 (single 8×8 char doubled) ---
+NEW
+10 CALL CLEAR
+20 CALL MAGNIFY(2)
+30 CALL SPRITE(#1, 65, 2, 80, 120)
+40 CALL KEY(0,K,S) :: IF S<1 THEN 40
+RUN
+(Expected: one large letter A, doubled to 16×16 TI-pixels. ESC.)
+
+--- Part C2: CALL MAGNIFY 3 (16×16 source = four 8×8 chars) ---
+NEW
+10 CALL CLEAR
+20 CALL MAGNIFY(3)
+30 CALL SPRITE(#1, 65, 2, 80, 120)
+40 CALL KEY(0,K,S) :: IF S<1 THEN 40
+RUN
+(Expected: a 2×2 grid of chars 65,66,67,68 = A,C / B,D in TI's
+column-major sprite-pattern layout, unmagnified.)
+
+--- Part C3: CALL MAGNIFY 4 (16×16 source doubled) ---
+NEW
+10 CALL CLEAR
+20 CALL MAGNIFY(4)
+30 CALL SPRITE(#1, 65, 2, 80, 120)
+40 CALL KEY(0,K,S) :: IF S<1 THEN 40
+RUN
+(Expected: same A,C / B,D grid as C2, but doubled to 32×32 TI-pixels.)
+
+--- Part D: change pattern ---
+NEW
+10 CALL CLEAR
+20 CALL SPRITE(#1, 65, 2, 96, 128)
+30 FOR C=65 TO 90
+40 CALL PATTERN(#1, C)
+50 FOR I=1 TO 8000 :: NEXT I
+60 NEXT C
+RUN
+(Expected: sprite cycles A through Z in place.)
+
+--- Part E: DELSPRITE ---
+NEW
+10 CALL CLEAR
+20 CALL SPRITE(#1, 65, 2, 96, 128, #2, 66, 7, 96, 144, #3, 67, 9, 96, 160)
+30 FOR I=1 TO 30000 :: NEXT I
+40 CALL DELSPRITE(#2)
+50 FOR I=1 TO 30000 :: NEXT I
+60 CALL DELSPRITE(ALL)
+RUN
+(Expected: three letters appear, middle one vanishes, then all vanish.)
+
+Phase 1 limits: sprites render but don't auto-move. CALL MOTION is
+Phase 2 (velocity + timer update). CALL POSITION / COINC / DISTANCE
+are Phase 3.
+
+
+=== 39. Sprites Phase 2 — CALL MOTION + auto-update ===
+
+Sprites with non-zero velocity move on a 60 Hz timer. Effective
+pixel speed = velocity / 8 per frame, so velocity 8 = 1 px/frame
+= 60 px/s, velocity 64 = 8 px/frame ≈ fast-arcade-game speed.
+Negative values move up / left, positive down / right.
+
+--- Part A: simple horizontal scroll ---
+NEW
+10 CALL CLEAR
+20 CALL SPRITE(#1, 65, 2, 96, 1)
+30 CALL MOTION(#1, 0, 16)
+40 CALL KEY(0,K,S) :: IF S<1 THEN 40
+RUN
+(Expected: letter A glides smoothly to the right, wraps when it
+reaches the edge. CTRL-C / ESC to break.)
+
+--- Part B: diagonal + wrap-around ---
+NEW
+10 CALL CLEAR
+20 CALL SPRITE(#1, 79, 7, 1, 1)
+30 CALL MOTION(#1, 12, 20)
+40 CALL KEY(0,K,S) :: IF S<1 THEN 40
+RUN
+(Expected: letter O bounces diagonally — wraps off the bottom-right
+corner and reappears at the top-left.)
+
+--- Part C: stop motion ---
+NEW
+10 CALL CLEAR
+20 CALL SPRITE(#1, 65, 2, 96, 1)
+30 CALL MOTION(#1, 0, 32)
+40 FOR I=1 TO 50000 :: NEXT I
+50 CALL MOTION(#1, 0, 0)
+60 CALL KEY(0,K,S) :: IF S<1 THEN 60
+RUN
+(Expected: sprite glides right, then stops mid-screen until key.)
+
+--- Part D: multiple moving sprites at once ---
+NEW
+10 CALL CLEAR
+20 FOR S=1 TO 5
+30 CALL SPRITE(#S, 64+S, S+1, 30+S*15, 1)
+40 CALL MOTION(#S, 0, S*4)
+50 NEXT S
+60 CALL KEY(0,K,S) :: IF S<1 THEN 60
+RUN
+(Expected: 5 sprites stagger across at different speeds.)
+
+=== 40. Sprites Phase 3 — POSITION / DISTANCE / COINC ===
+
+--- Part A: read sprite position ---
+NEW
+10 CALL CLEAR
+20 CALL SPRITE(#1, 65, 2, 96, 128)
+30 CALL POSITION(#1, R, C)
+40 PRINT "ROW=";R;" COL=";C
+50 END
+RUN
+(Expected: ROW= 96  COL= 128)
+
+--- Part B: bounce off screen edges ---
+The naïve `IF R>176 THEN RV=-RV` flips the sign every iteration while
+the sprite is past the bound, so it gets stuck. Direction-aware check:
+only flip when the velocity is INTO the wall.
+NEW
+10 CALL CLEAR
+20 RV=8 :: CV=12
+30 CALL SPRITE(#1, 65, 2, 96, 128, RV, CV)
+40 CALL POSITION(#1, R, C)
+50 IF (R<2 AND RV<0) OR (R>176 AND RV>0) THEN RV=-RV :: CALL MOTION(#1, RV, CV)
+60 IF (C<2 AND CV<0) OR (C>240 AND CV>0) THEN CV=-CV :: CALL MOTION(#1, RV, CV)
+70 CALL KEY(0,K,S) :: IF S<1 THEN 40
+RUN
+(Expected: A bounces around all four walls until you press a key.)
+
+--- Part C: COINC sprite-pair collision ---
+NEW
+10 CALL CLEAR
+20 CALL SPRITE(#1, 65, 2, 96, 50)
+30 CALL SPRITE(#2, 79, 7, 96, 200, 0, -8)
+40 CALL COINC(#1, #2, 8, H)
+50 IF H=-1 THEN 80
+60 CALL KEY(0,K,S) :: IF S>0 THEN 90
+70 GOTO 40
+80 CALL DELSPRITE(ALL) :: PRINT "COLLISION!"
+90 END
+RUN
+(Expected: O glides left toward A, when they overlap "COLLISION!"
+prints and both sprites vanish.)
+
+--- Part D: COINC ALL sweep ---
+NEW
+10 CALL CLEAR
+20 FOR I=1 TO 4
+30 CALL SPRITE(#I, 64+I, I+1, 50+I*20, 50+I*30)
+40 NEXT I
+50 CALL COINC(ALL, H)
+60 PRINT "ANY COLLIDE:";H
+70 END
+RUN
+(Expected: ANY COLLIDE: 0 — no sprites overlap at those positions.)
+
+--- Part E: three sprites bouncing off walls and each other ---
+The full classic-arcade demo — wall-bounce + pairwise sprite-sprite
+collision, with Pac-Man, a Ghost, and a Space Invader as the three
+sprites. Three pairs (1,2) (1,3) (2,3) are checked each frame; any
+collision flips both colliders' velocities. Press any key to stop.
+
+Patterns (8-byte hex, top row → bottom row):
+  Pac-Man:        3C7EE0E0E0E07E3C  (mouth-open to the right)
+  Ghost:          3C7EDBDBFFFFFFDB  (rounded top, eye-holes, feet)
+  Space Invader:  24183C66FFBDA542  (antennae + body + legs)
+
+NEW
+10 CALL CLEAR
+15 CALL SCREEN(2)
+20 CALL CHAR(128,"3C7EE0E0E0E07E3C")
+30 CALL CHAR(129,"3C7EDBDBFFFFFFDB")
+40 CALL CHAR(130,"24183C66FFBDA542")
+50 R1V=8 :: C1V=12 :: R2V=-6 :: C2V=-10 :: R3V=10 :: C3V=-8
+60 CALL SPRITE(#1, 128, 12, 80, 80, R1V, C1V)
+70 CALL SPRITE(#2, 129, 16, 120, 180, R2V, C2V)
+80 CALL SPRITE(#3, 130, 13, 100, 130, R3V, C3V)
+90 CALL POSITION(#1, R1, C1) :: CALL POSITION(#2, R2, C2) :: CALL POSITION(#3, R3, C3)
+100 IF (R1<50 AND R1V<0) OR (R1>142 AND R1V>0) THEN R1V=-R1V :: CALL MOTION(#1, R1V, C1V)
+110 IF (C1<50 AND C1V<0) OR (C1>206 AND C1V>0) THEN C1V=-C1V :: CALL MOTION(#1, R1V, C1V)
+120 IF (R2<50 AND R2V<0) OR (R2>142 AND R2V>0) THEN R2V=-R2V :: CALL MOTION(#2, R2V, C2V)
+130 IF (C2<50 AND C2V<0) OR (C2>206 AND C2V>0) THEN C2V=-C2V :: CALL MOTION(#2, R2V, C2V)
+140 IF (R3<50 AND R3V<0) OR (R3>142 AND R3V>0) THEN R3V=-R3V :: CALL MOTION(#3, R3V, C3V)
+150 IF (C3<50 AND C3V<0) OR (C3>206 AND C3V>0) THEN C3V=-C3V :: CALL MOTION(#3, R3V, C3V)
+160 REM CALL COINC(#1, #2, 12, H)
+170 REM IF H=-1 THEN R1V=-R1V :: C1V=-C1V :: R2V=-R2V :: C2V=-C2V :: CALL MOTION(#1, R1V, C1V) :: CALL MOTION(#2, R2V, C2V)
+180 REM CALL COINC(#1, #3, 12, H)
+190 REM IF H=-1 THEN R1V=-R1V :: C1V=-C1V :: R3V=-R3V :: C3V=-C3V :: CALL MOTION(#1, R1V, C1V) :: CALL MOTION(#3, R3V, C3V)
+200 REM CALL COINC(#2, #3, 12, H)
+210 REM IF H=-1 THEN R2V=-R2V :: C2V=-C2V :: R3V=-R3V :: C3V=-C3V :: CALL MOTION(#2, R2V, C2V) :: CALL MOTION(#3, R3V, C3V)
+220 CALL KEY(0,K,S) :: IF S<1 THEN 90
+RUN
+(Expected: a yellow Pac-Man, a white Ghost, and a green Space Invader
+carom off all four walls and off each other until you press a key.
+Three-way pile-ups are common.)
+
+--- Part F: COINC ALL with mixed-size sprites ---
+Verify COINC ALL respects each sprite's actual on-screen footprint.
+Two sprites on the same row, 20 columns apart. With both unmagnified
+(8×8 footprint) they don't touch. After MAGNIFY 4 makes #2 a 32×32
+footprint, it reaches into #1's space and COINC fires.
+NEW
+10 CALL CLEAR
+20 CALL MAGNIFY(1)
+30 CALL SPRITE(#1, 65, 2, 96, 50)
+40 CALL SPRITE(#2, 79, 7, 96, 70)
+50 CALL COINC(ALL, H)
+60 PRINT "SMALL+SMALL:";H
+70 CALL DELSPRITE(#2)
+80 CALL MAGNIFY(4)
+90 CALL SPRITE(#2, 65, 7, 96, 30)
+100 CALL COINC(ALL, H)
+110 PRINT "SMALL+MAG4:";H
+120 END
+RUN
+(Expected: SMALL+SMALL: 0  — 50..57 vs 70..77 don't overlap.
+          SMALL+MAG4:  -1 — magnified #2 at col 30 covers 30..61,
+                            overlapping #1 at 50..57.)
+
+--- Part G: motion + position update at runtime ---
+NEW
+10 CALL CLEAR
+20 CALL SPRITE(#1, 65, 2, 96, 128)
+30 CALL MOTION(#1, 8, 0)
+40 FOR I=1 TO 50000 :: NEXT I
+50 CALL MOTION(#1, -8, 0)
+60 FOR I=1 TO 50000 :: NEXT I
+70 GOTO 30
+RUN
+(Expected: sprite oscillates up and down.)
+
+
+=== 41. PRINT USING / IMAGE — formatted output ===
+
+Edit characters in an IMAGE format string:
+  #         digit slot
+  .         decimal point
+  -         leading sign space (negative shows as `-`, positive as ` `)
+  +         leading sign always shown
+  ^^^^      scientific notation exponent (4 carets)
+Any other character is literal.
+
+--- Part A: simple right-justified numeric ---
+NEW
+10 IMAGE ###.##
+20 PRINT USING 10:12.345
+30 PRINT USING 10:-5.6
+40 PRINT USING 10:100
+50 END
+RUN
+
+Expected:
+ 12.35
+ -5.60
+100.00
+
+--- Part B: multiple values per line ---
+NEW
+10 IMAGE ###.## ###.##
+20 PRINT USING 10:1.5,2.75
+30 END
+RUN
+
+Expected:
+  1.50   2.75
+
+--- Part C: literal text in the IMAGE ---
+NEW
+10 IMAGE TOTAL = ###.##  COUNT = ###
+20 PRINT USING 10:99.5,42
+30 END
+RUN
+
+Expected:
+TOTAL =  99.50  COUNT =  42
+
+--- Part D: inline string format (no IMAGE line) ---
+NEW
+10 PRINT USING "##.## CM":3.14159
+20 PRINT USING "##.## CM":99.999
+30 END
+RUN
+
+Expected:
+ 3.14 CM
+##### CM       (overflow — 99.999 rounds to 100.00, doesn't fit in
+                ##.## so every slot in the field shows '#')
+
+--- Part E: overflow detection ---
+NEW
+10 IMAGE ##.##
+20 PRINT USING 10:1.234
+30 PRINT USING 10:9999.99
+40 END
+RUN
+
+Expected:
+ 1.23
+#####          (1.234 fits, 9999.99 doesn't — '#'s flag overflow)
+
+--- Part F: DISPLAY AT ... USING ---
+NEW
+10 CALL CLEAR
+20 IMAGE  SCORE: ####
+30 DISPLAY AT(5,5) USING 20:1234
+40 CALL KEY(0,K,S):: IF S<1 THEN 40
+RUN
+
+Expected: at row 5 col 5, "SCORE: 1234".
+
+
+=== 42. Open modes — FIXED and RELATIVE ===
+
+OPEN supports three additional keywords beyond the default DISPLAY/SEQUENTIAL:
+
+  INTERNAL  — accepted; treated as DISPLAY (no TI radix-100 encoding)
+  FIXED N   — fixed N-byte records, no length prefix or LF terminator
+  RELATIVE  — random access; pair with REC=K on PRINT/INPUT
+
+REC=K may be used on any FIXED file (it implies relative positioning
+even if the file was opened SEQUENTIAL).
+
+--- Part A: FIXED on FLASH (sequential write + read) ---
+NEW
+10 OPEN #1:"FLASH.FIX1",OUTPUT,FIXED 10
+20 PRINT #1:"AAAA"
+30 PRINT #1:"BBBB"
+40 PRINT #1:"CCCC"
+50 CLOSE #1
+60 OPEN #1:"FLASH.FIX1",INPUT,FIXED 10
+70 LINPUT #1:A$
+80 LINPUT #1:B$
+90 LINPUT #1:C$
+100 CLOSE #1
+110 PRINT "[";A$;"]"
+120 PRINT "[";B$;"]"
+130 PRINT "[";C$;"]"
+140 END
+RUN
+
+Expected:
+[AAAA]
+[BBBB]
+[CCCC]
+(Trailing space-pad is stripped on read.)
+
+--- Part B: RELATIVE — write out of order ---
+NEW
+10 OPEN #1:"FLASH.REL1",OUTPUT,FIXED 8,RELATIVE
+20 PRINT #1,REC 2:"REC TWO"
+30 PRINT #1,REC 0:"REC ZERO"
+40 PRINT #1,REC 1:"REC ONE"
+50 CLOSE #1
+60 OPEN #1:"FLASH.REL1",INPUT,FIXED 8,RELATIVE
+70 LINPUT #1,REC 1:R1$
+80 LINPUT #1,REC 0:R0$
+90 LINPUT #1,REC 2:R2$
+100 CLOSE #1
+110 PRINT "0=";R0$
+120 PRINT "1=";R1$
+130 PRINT "2=";R2$
+140 END
+RUN
+
+Expected:
+0=REC ZERO
+1=REC ONE
+2=REC TWO
+
+--- Part C: FIXED on a DSK image ---
+First mount a writable disk on SD (FLASH works too but tears the
+display during the format pass — see EXTENSIONS.md). If DSK1 is
+already mounted from an earlier test, unmount it first; and include
+the `.DSK` extension explicitly on the MOUNT spec:
+UNMOUNT DSK1
+NEWDISK SDCARD.WORK.DSK,SSSD
+MOUNT DSK1,SDCARD.WORK.DSK
+
+NEW
+10 OPEN #1:"DSK1.FX",OUTPUT,FIXED 16
+20 FOR I=1 TO 5
+30 PRINT #1:"REC " & STR$(I)
+40 NEXT I
+50 CLOSE #1
+60 OPEN #1:"DSK1.FX",INPUT,FIXED 16
+70 FOR I=1 TO 5
+80 LINPUT #1:R$
+90 PRINT R$
+100 NEXT I
+110 CLOSE #1
+120 END
+RUN
+
+Expected: REC 1 .. REC 5 each on its own line. CAT DSK1 should show
+FX with a 16-byte record length.
+
+--- Part D: INTERNAL is parse-and-go (KNOWN LIMITATION) ---
+INTERNAL is recognized in OPEN so existing TI code doesn't error out,
+but the bytes go to disk as DISPLAY for now (no radix-100 encoding).
+A round-trip works with itself but files are NOT interoperable with
+a real TI-99's INTERNAL format. See EXTENSIONS.md "Known limitations".
+NEW
+10 OPEN #1:"FLASH.INT1",OUTPUT,INTERNAL
+20 PRINT #1:"HELLO"
+30 PRINT #1:"WORLD"
+40 CLOSE #1
+50 OPEN #1:"FLASH.INT1",INPUT,INTERNAL
+60 LINPUT #1:A$
+70 LINPUT #1:B$
+80 CLOSE #1
+90 PRINT A$;" ";B$
+100 END
+RUN
+
+Expected: HELLO WORLD
+
+
+=== 43. RESTORE # — rewind a file without reopening ===
+
+NEW
+10 OPEN #1:"FLASH.RW1",OUTPUT
+20 PRINT #1:"ALPHA"
+30 PRINT #1:"BETA"
+40 PRINT #1:"GAMMA"
+50 CLOSE #1
+60 OPEN #1:"FLASH.RW1",INPUT
+70 LINPUT #1:A$
+80 LINPUT #1:B$
+90 PRINT "PASS 1: ";A$;" ";B$
+100 RESTORE #1
+110 LINPUT #1:C$
+120 LINPUT #1:D$
+130 PRINT "PASS 2: ";C$;" ";D$
+140 CLOSE #1
+150 END
+RUN
+
+Expected:
+PASS 1: ALPHA BETA
+PASS 2: ALPHA BETA
+
+(After RESTORE #1 the file is rewound to the first record, so the
+second pair of LINPUTs reads ALPHA / BETA again instead of GAMMA / EOF.)
+
+
+=== 44. Conway's Game of Life ===
+
+Classic cellular automaton on a 24×32 toroidal grid (edges wrap).
+Each generation applies the four rules:
+  - alive cell with 2 or 3 live neighbors stays alive
+  - alive cell otherwise dies (loneliness or overcrowding)
+  - dead cell with exactly 3 live neighbors comes alive
+  - everything else stays dead
+The seed plants three classic patterns: a still-life "block" in the
+upper-left, a period-2 "blinker" in the middle, and a glider that
+walks down-and-right (and reappears at the top-left corner thanks
+to the toroidal edges). Press any key to stop.
+
+NEW
+10 CALL CLEAR
+15 CALL COLOR(2,16,1)
+20 DIM A(24,32),B(24,32)
+30 REM SEEDS: BLOCK, BLINKER, GLIDER
+40 A(3,3)=1
+41 A(3,4)=1
+42 A(4,3)=1
+43 A(4,4)=1
+50 A(10,10)=1
+51 A(10,11)=1
+52 A(10,12)=1
+60 A(15,6)=1
+61 A(16,7)=1
+62 A(17,5)=1
+63 A(17,6)=1
+64 A(17,7)=1
+70 REM INITIAL PAINT
+80 FOR R=1 TO 24
+81 FOR C=1 TO 32
+82 IF A(R,C)=0 THEN 90
+85 CALL HCHAR(R,C,42)
+90 NEXT C
+91 NEXT R
+100 REM COMPUTE NEXT GENERATION
+110 FOR R=1 TO 24
+111 FOR C=1 TO 32
+120 N=0
+130 FOR DR=-1 TO 1
+131 FOR DC=-1 TO 1
+140 IF DR<>0 THEN 150
+141 IF DC=0 THEN 180
+150 RR=R+DR
+151 IF RR<1 THEN RR=RR+24
+152 IF RR>24 THEN RR=RR-24
+160 CC=C+DC
+161 IF CC<1 THEN CC=CC+32
+162 IF CC>32 THEN CC=CC-32
+170 N=N+A(RR,CC)
+180 NEXT DC
+181 NEXT DR
+190 B(R,C)=0
+191 IF A(R,C)<>1 THEN 195
+192 IF N=2 THEN B(R,C)=1
+193 IF N=3 THEN B(R,C)=1
+194 GOTO 200
+195 IF N=3 THEN B(R,C)=1
+200 NEXT C
+201 NEXT R
+210 REM APPLY DELTAS
+220 FOR R=1 TO 24
+221 FOR C=1 TO 32
+230 IF B(R,C)=A(R,C) THEN 250
+240 IF B(R,C)=1 THEN CALL HCHAR(R,C,42) ELSE CALL HCHAR(R,C,32)
+241 A(R,C)=B(R,C)
+250 NEXT C
+251 NEXT R
+260 CALL KEY(0,K,S)
+261 IF S<1 THEN 110
+270 END
+RUN
+
+Expected:
+- Block (top-left) sits unchanged forever.
+- Blinker (middle) flips between horizontal and vertical every gen.
+- Glider walks diagonally down-right, wraps at the edges.
+
+Generation rate is BASIC-bound (~6000 array reads + 768 cell
+checks per gen). On the ESP32 fast-path that's a few generations
+per second — fast enough to watch the glider crawl.
+
+
+=== 45. CALL JOYST — gamepad / arrow-key driven sprite ===
+
+Move a sprite around the screen with the BLE gamepad (8BitDo Zero 2)
+or the keyboard arrow keys. Single-pad scope: unit 1 only. unit 2
+always reports centered.
+
+NEW
+10 CALL CLEAR
+20 CALL SPRITE(#1,42,16,96,128,0,0)
+30 CALL JOYST(1,X,Y)
+40 RV=-Y/4*8
+50 CV=X/4*8
+60 CALL MOTION(#1,RV,CV)
+70 CALL KEY(0,K,S)
+80 IF S<1 THEN 30
+90 END
+RUN
+
+Expected: an asterisk sprite at center screen that follows the
+D-pad (or arrow keys if the Zero 2 is in keyboard mode). Press a
+key to stop. The math at lines 40-50 converts TI's -4/0/+4 axis to
+sprite velocity 8 sub-pixels/frame; Y is negated because TI's
+joystick has +up but sprite row coords have +down.
+
+
+=== 46. CALL SAY — TI Speech Synthesizer full vocabulary sweep ===
+
+Walks every single-word entry in the TI Speech Synthesizer cartridge
+ROM (358 words). The CALL SAY parser tokenises on space/comma/period,
+so words containing those characters (the '+' / '-' / '.' / multi-word
+phrase entries) are skipped. Each word is announced on screen as it
+plays. Press any key to stop the sweep early.
+
+NEW
+10 CALL CLEAR
+20 DISPLAY AT(1,3):"TI SPEECH VOCAB SWEEP"
+30 DISPLAY AT(3,1):"PRESS ANY KEY TO STOP"
+40 N=358
+50 FOR I=1 TO N
+60 READ W$
+65 CALL HCHAR(12,1,32,32)
+70 DISPLAY AT(12,1):I;": ";W$
+80 CALL SAY(W$)
+90 CALL KEY(0,K,S)
+100 IF S>0 THEN 130
+110 NEXT I
+120 GOTO 140
+130 DISPLAY AT(14,1):"STOPPED AT ";I
+140 DISPLAY AT(20,1):"DONE"
+150 END
+200 DATA "0","1","2","3","4","5","6"
+210 DATA "7","8","9","A","A1","ABOUT","AFTER"
+220 DATA "AGAIN","ALL","AM","AN","AND","ANSWER","ANY"
+230 DATA "ARE","AS","ASSUME","AT","B","BACK","BASE"
+240 DATA "BE","BETWEEN","BLACK","BLUE","BOTH","BOTTOM","BUT"
+250 DATA "BUY","BY","BYE","C","CAN","CASSETTE","CENTER"
+260 DATA "CHECK","CHOICE","CLEAR","COLOR","COME","COMES","COMMA"
+270 DATA "COMMAND","COMPLETE","COMPLETED","COMPUTER","CONNECTED","CONSOLE","CORRECT"
+280 DATA "COURSE","CYAN","D","DATA","DECIDE","DEVICE","DID"
+290 DATA "DIFFERENT","DISKETTE","DO","DOES","DOING","DONE","DOUBLE"
+300 DATA "DOWN","DRAW","DRAWING","E","EACH","EIGHT","EIGHTY"
+310 DATA "ELEVEN","ELSE","END","ENDS","ENTER","ERROR","EXACTLY"
+320 DATA "EYE","F","FIFTEEN","FIFTY","FIGURE","FIND","FINE"
+330 DATA "FINISH","FINISHED","FIRST","FIT","FIVE","FOR","FORTY"
+340 DATA "FOUR","FOURTEEN","FOURTH","FROM","FRONT","G","GAMES"
+350 DATA "GET","GETTING","GIVE","GIVES","GO","GOES","GOING"
+360 DATA "GOOD","GOODBYE","GOT","GRAY","GREEN","GUESS","H"
+370 DATA "HAD","HAND","HAS","HAVE","HEAD","HEAR","HELLO"
+380 DATA "HELP","HERE","HIGHER","HIT","HOME","HOW","HUNDRED"
+390 DATA "HURRY","I","IF","IN","INCH","INCHES","INSTRUCTION"
+400 DATA "INSTRUCTIONS","IS","IT","J","JOYSTICK","JUST","K"
+410 DATA "KEY","KEYBOARD","KNOW","L","LARGE","LARGER","LARGEST"
+420 DATA "LAST","LEARN","LEFT","LESS","LET","LIKE","LIKES"
+430 DATA "LINE","LOAD","LONG","LOOK","LOOKS","LOWER","M"
+440 DATA "MADE","MAGENTA","MAKE","ME","MEAN","MEMORY","MESSAGE"
+450 DATA "MESSAGES","MIDDLE","MIGHT","MODULE","MORE","MOST","MOVE"
+460 DATA "MUST","N","NAME","NEAR","NEED","NEGATIVE","NEXT"
+470 DATA "NINE","NINETY","NO","NOT","NOW","NUMBER","O"
+480 DATA "OF","OFF","OH","ON","ONE","ONLY","OR"
+490 DATA "ORDER","OTHER","OUT","OVER","P","PART","PARTNER"
+500 DATA "PARTS","PERIOD","PLAY","PLAYS","PLEASE","POINT","POSITION"
+510 DATA "POSITIVE","PRESS","PRINT","PRINTER","PROBLEM","PROBLEMS","PROGRAM"
+520 DATA "PUT","PUTTING","Q","R","RANDOMLY","READ","READ1"
+530 DATA "RECORDER","RED","REFER","REMEMBER","RETURN","REWIND","RIGHT"
+540 DATA "ROUND","S","SAID","SAVE","SAY","SAYS","SCREEN"
+550 DATA "SECOND","SEE","SEES","SET","SEVEN","SEVENTY","SHAPE"
+560 DATA "SHAPES","SHIFT","SHORT","SHORTER","SHOULD","SIDE","SIDES"
+570 DATA "SIX","SIXTY","SMALL","SMALLER","SMALLEST","SO","SOME"
+580 DATA "SORRY","SPACE","SPACES","SPELL","SQUARE","START","STEP"
+590 DATA "STOP","SUM","SUPPOSED","SURE","T","TAKE","TEEN"
+600 DATA "TELL","TEN","THAN","THAT","THE","THE1","THEIR"
+610 DATA "THEN","THERE","THESE","THEY","THING","THINGS","THINK"
+620 DATA "THIRD","THIRTEEN","THIRTY","THIS","THREE","THREW","THROUGH"
+630 DATA "TIME","TO","TOGETHER","TONE","TOO","TOP","TRY"
+640 DATA "TURN","TWELVE","TWENTY","TWO","TYPE","U","UHOH"
+650 DATA "UNDER","UNDERSTAND","UNTIL","UP","UPPER","USE","V"
+660 DATA "VARY","VERY","W","WAIT","WANT","WANTS","WAY"
+670 DATA "WE","WEIGH","WEIGHT","WELL","WERE","WHAT","WHEN"
+680 DATA "WHERE","WHICH","WHITE","WHO","WHY","WILL","WITH"
+690 DATA "WON","WORD","WORDS","WORK","WORKING","WRITE","X"
+700 DATA "Y","YELLOW","YES","YET","YOU","YOUR","Z"
+710 DATA "ZERO"
+SAVE Test46
+RUN
+

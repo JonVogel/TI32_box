@@ -1,0 +1,21 @@
+5 CALL CLEAR
+10 PRINT "SQR:"
+20 PRINT "  SQR(0) =";SQR(0)
+30 PRINT "  SQR(1) =";SQR(1)
+40 PRINT "  SQR(4) =";SQR(4)
+50 PRINT "  SQR(2) =";SQR(2)
+60 PRINT "TAN:"
+70 PRINT "  TAN(0)      =";TAN(0)
+80 PRINT "  TAN(PI/4)   =";TAN(PI/4)
+90 PRINT "ATN:"
+100 PRINT "  ATN(0)      =";ATN(0)
+110 PRINT "  ATN(1)      =";ATN(1)
+120 PRINT "  ATN(1)*4    =";ATN(1)*4
+130 PRINT "LOG:"
+140 PRINT "  LOG(1)      =";LOG(1)
+150 PRINT "  LOG(EXP(1)) =";LOG(EXP(1))
+160 PRINT "EXP:"
+170 PRINT "  EXP(0)      =";EXP(0)
+180 PRINT "  EXP(1)      =";EXP(1)
+190 PRINT "  EXP(LOG(5)) =";EXP(LOG(5))
+200 END

@@ -1,0 +1,80 @@
+TI BASIC Test Suite — Index
+============================
+
+46 BASIC test programs covering language features, file I/O, sprites,
+graphics, speech, and editor commands. Extracted from TEST_PROGRAMS.txt
+in the arduino-cli predecessor repo.
+
+To run a test on a device:
+  1. Upload the .bas file via ti_files.py (PC pane → device pane).
+     The text file lands as a PROGRAM-type blob.
+  2. At the BASIC prompt: OLD "FLASH.testNN"  (or DSK1.testNN if on DSK).
+  3. LIST to inspect, RUN to execute.
+
+File         | Topic                              | Notes
+-------------|------------------------------------|---------------------------------
+test01.bas   | READ / DATA / RESTORE              | Iterates DATA, then rewinds
+test02.bas   | RANDOMIZE + RND                    | Prints 5 random 0-99 ints
+test03.bas   | ON GOTO                            | Branches by index
+test04.bas   | ON GOSUB                           | Same idea for subroutines
+test05.bas   | CALL KEY (interactive)             | Quit by pressing Q
+test06.bas   | MAX, MIN, PI, SIN, COS             | Numeric / transcendental
+test07.bas   | POS string search                  | Substring locator
+test08.bas   | TAB() column padding               | PRINT column alignment
+test09.bas   | DISPLAY AT(r,c)                    | Absolute screen positioning
+test10.bas   | ACCEPT AT (interactive)            | Read a string at (r,c)
+test11.bas   | 1D numeric arrays                  | A(0..10), squares
+test12.bas   | 2D numeric arrays                  | M(3,3) grid
+test13.bas   | String arrays                      | N$(1..5)
+test14.bas   | OPTION BASE 1                      | Array origin override
+test15.bas   | CALL CHAR / HCHAR / VCHAR / COLOR  | Custom glyph + cross drawing
+test16.bas   | CALL SCREEN (interactive)          | Cycles screen colors 2..16
+test17.bas   | LINPUT (interactive)               | Full-line read incl. commas
+test18.bas   | String functions all-in-one        | LEN, SEG$, CHR$, ASC, RPT$, VAL, STR$, &
+test19.bas   | Nested FOR loops                   | Multiplication table fragment
+test20.bas   | 8-set color stripes                | Per-charset CALL COLOR
+test21.bas   | DEF FN user-defined functions      | Numeric + string
+test22.bas   | Operators (full sweep)             | Arith, compare, logic, concat, precedence
+test23.bas   | Transcendentals                    | SQR, TAN, ATN, LOG, EXP round-trips
+test24.bas   | Graphics introspection             | VERSION, CHARPAT, CHARSET, GCHAR
+test25.bas   | STOP                               | Halts before line 30
+test26a.bas  | MERGE — Part A (save first)        | See test26b for the merge step
+test26b.bas  | MERGE — Part B (merge + LIST)      | Sorted-by-line-number merge
+test27.bas   | NUM auto-line-numbering            | Interactive; press Enter on auto-line to exit
+test28.bas   | RES / RESEQUENCE                   | Renumbers + retargets GOTO/GOSUB
+test29.bas   | TRACE / UNTRACE / BREAK / UNBREAK  | Same program; toggle modes manually
+test30.bas   | SUB / SUBEND / SUBEXIT / CALL sub  | Numeric + string params, pass-by-value-result
+test31.bas   | LIST range + CONTINUE              | Multi-part (LIST 30, 20-40, 30-, -20)
+test32.bas   | ! tail comment                     | Drops rest of line
+test33.bas   | ON ERROR / BREAK / WARNING         | Multi-part; uses ON ERROR 200 + handler
+test34.bas   | File I/O: OPEN/CLOSE/PRINT/INPUT/EOF | Multi-part; writes FLASH.TEST
+test35.bas   | V9T9 .dsk mount + read             | Multi-step (MOUNT/CAT/OPEN)
+test36.bas   | NEWDISK + write + COPY             | Multi-step (NEWDISK/MOUNT/PRINT#)
+test37.bas   | PROGRAM format SAVE/OLD on DSK     | Multi-step
+test38.bas   | Sprites Phase 1: SPRITE/LOCATE/MAGNIFY/PATTERN/DELSPRITE | Multi-part (A..E)
+test39.bas   | Sprites Phase 2: CALL MOTION       | Smooth scroll
+test40.bas   | Sprites Phase 3: POSITION/COINC/DISTANCE | The 3-sprite bouncing classic-arcade demo
+test41.bas   | PRINT USING / IMAGE                | Multi-part (A..F)
+test42.bas   | OPEN modes FIXED / RELATIVE        | Multi-part (A..D)
+test43.bas   | RESTORE # (rewind file)            | Pass-1 / pass-2 readback
+test44.bas   | Conway's Game of Life              | 24x32 torus, block + blinker + glider
+test45.bas   | CALL JOYST (interactive)           | Move sprite with gamepad / arrows
+test46.bas   | CALL SAY full vocab sweep          | 358 words, press any key to stop
+
+Multi-part tests: each .bas is the primary / first-part program. The
+companion parts (variations, sub-runs, expected-output annotations) all
+live in **TEST_PROGRAMS.txt right here in this folder** — search for the
+matching section header (e.g. "=== 33. ON BREAK / ON ERROR / ON WARNING ===")
+for the full multi-part procedure, the expected output for each run,
+and any commentary on TI quirks. The .bas files are the loadable form;
+TEST_PROGRAMS.txt is the human-readable spec.
+
+Interactive tests are marked above; they wait for a key press. Use
+the BLE keyboard or send a byte over serial to advance them.
+
+Hardware notes:
+  - Tests that touch DSK1 need a real .dsk image mounted (test35/36/37/42).
+  - test45 wants a BLE gamepad or arrow keys.
+  - test46 needs the speech ROM (spchrom.bin baked into the speech
+    component).
+  - test44 is BASIC-bound at ~few generations/second — slow but visible.
