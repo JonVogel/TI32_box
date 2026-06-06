@@ -1,6 +1,6 @@
 [submodule "components/ti-emulator"]
 	path = components/ti-emulator
-	url = https://github.com/JonVogel/TI_EB_Emulator_ESP.git
+	url = https://github.com/JonVogel/TI32_emulator_core.git
 	branch = main
 [submodule "components/LovyanGFX"]
 	path = components/LovyanGFX
@@ -20,7 +20,7 @@
 	branch = idf-port
 [submodule "components/web_files"]
 	path = components/web_files
-	url = https://github.com/JonVogel/TI_Web_Files_ESP.git
+	url = https://github.com/JonVogel/TI32_web_files.git
 	branch = idf-port
 [submodule "docs"]
 	path = docs
