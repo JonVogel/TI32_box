@@ -6,7 +6,6 @@ idf_component_register(
     SRCS
         "main.cpp"
         "audio.cpp"
-        "web_files.cpp"
     INCLUDE_DIRS
         "."
     PRIV_REQUIRES
@@ -32,4 +31,9 @@ idf_component_register(
         NimBLE-Arduino
         ESPAsyncWebServer
         AsyncTCP
+        # Shared HTTP file manager (JonVogel/TI_Web_Files_ESP @ idf-port).
+        # Replaces the previous main/web_files.cpp, which was a local
+        # SPA-style implementation. The shared library is JSON-only —
+        # use ti_files.py from the same repo on a PC for the UI.
+        web_files
 )

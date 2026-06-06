@@ -85,8 +85,33 @@ CONFIG_LWIP_TCPIP_TASK_STACK_SIZE=2560
 CONFIG_BT_ENABLED=y
 CONFIG_BT_NIMBLE_ENABLED=y
 CONFIG_BT_NIMBLE_MAX_CONNECTIONS=2
-CONFIG_BT_NIMBLE_MAX_BONDS=4
-CONFIG_BT_NIMBLE_MAX_CCCDS=8
+CONFIG_BT_NIMBLE_MAX_BONDS=2
+CONFIG_BT_NIMBLE_MAX_CCCDS=4
+
+# Phase-3 BLE memory fix (matches ti-extended-basic-esp32 commit 1814108).
+# Without these, the first LE Secure Connections pairing trips
+# "BLE_INIT: Malloc failed" right after authentication: the keyboard
+# reports connected but no HID service is bound and no keystrokes
+# arrive. Same root cause on Box-3 as on the Sunton port — same chip,
+# same NimBLE stack, same internal-DRAM budget.
+#
+# MEM_ALLOC_MODE_EXTERNAL routes NimBLE's dynamic allocations (pairing
+# crypto contexts: ECDH, AES, security DB entries) into PSRAM where
+# 6.8 MB is free, instead of the ~10 KB internal-DRAM headroom that's
+# left after WiFi + AsyncWebServer + BLE init. The buffer-count cuts
+# below shrink NimBLE's static (BSS) pools from general-purpose sizes
+# down to HID-only proportions, freeing several KB internal-DRAM and
+# reducing fragmentation. CONFIG_BT_ALLOCATION_FROM_SPIRAM_FIRST covers
+# the BT controller path; the NIMBLE option covers the host.
+CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_EXTERNAL=y
+# CONFIG_BT_NIMBLE_MEM_ALLOC_MODE_INTERNAL is not set
+CONFIG_BT_NIMBLE_TRANSPORT_ACL_FROM_LL_COUNT=8
+CONFIG_BT_NIMBLE_TRANSPORT_EVT_COUNT=12
+CONFIG_BT_NIMBLE_MSYS_2_BLOCK_COUNT=12
+CONFIG_BT_NIMBLE_WHITELIST_SIZE=4
+CONFIG_BT_NIMBLE_ATT_MAX_PREP_ENTRIES=4
+CONFIG_BT_NIMBLE_GATT_MAX_PROCS=2
+CONFIG_BT_ALLOCATION_FROM_SPIRAM_FIRST=y
 
 # IDF NimBLE host's compile-time log level. Default is INFO which is
 # very chatty during scan/GAP. WARNING keeps errors visible (and lets

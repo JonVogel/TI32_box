@@ -18,3 +18,7 @@
 	path = components/ESPAsyncWebServer
 	url = https://github.com/JonVogel/ESPAsyncWebServer.git
 	branch = idf-port
+[submodule "components/web_files"]
+	path = components/web_files
+	url = https://github.com/JonVogel/TI_Web_Files_ESP.git
+	branch = idf-port

@@ -49,7 +49,11 @@
 #include "program_io.h"
 #include "sprites.h"
 #include "line_editor.h"
-#include "web_files.h"
+#include <web_files.h>     // shared TI_Web_Files_ESP component
+#include <WiFi.h>          // CALL WIFI host overrides (station mode + status)
+#include <Preferences.h>   // persistent NVS storage for WiFi credentials
+#include <esp_wifi.h>      // esp_wifi_set_ps — stronger than WiFi.setSleep
+#include <esp_coexist.h>   // esp_coex_preference_set — BT vs WiFi arbiter
 
 // LCD pins (ESP32-S3-Box-3, per esp-bsp/esp-box-3)
 #define LCD_DC    4
@@ -2893,26 +2897,86 @@ void tiUnpair()
   BleHidHost::requestUnpairAll();
 }
 
-// Strong overrides for CALL WIFI — route to the web_files manager.
+// Strong overrides for CALL WIFI — handle WiFi credential storage and
+// radio control directly here. Previously these delegated to the local
+// web_files.cpp; phase-3 unification moved web_files to a shared
+// component that's host-agnostic, so the host has to own WiFi now.
+//
+// Credentials live in NVS under the "tiwifi" namespace. Arduino's
+// setup() task initializes NVS before our setup() runs
+// (CONFIG_AUTOSTART_ARDUINO=y), so we don't call nvs_flash_init().
+// WiFi.begin() is non-blocking — connection completes in a background
+// task. tiWifiStatus() reports current state so BASIC can poll for the
+// ONLINE transition rather than block boot.
+static Preferences g_wifiPrefs;
+
+// Force WiFi to own the radio whenever it's needed, even with NimBLE
+// active. The Arduino WiFi.setSleep(false) wrapper gets overridden by
+// the BT/WiFi coexistence policy, leaving the modem in sleep cycles
+// that throttle HTTP responses. The IDF-level calls below are stronger:
+//   esp_wifi_set_ps(WIFI_PS_NONE) — driver: do not enter modem sleep.
+//   esp_coex_preference_set(ESP_COEX_PREFER_WIFI) — arbiter: WiFi
+//                                                   wins when both
+//                                                   want air.
+// BLE keyboard latency may suffer slightly during heavy HTTP traffic;
+// for a 1-client file manager that's the right trade.
+static void applyWifiRadioPolicy()
+{
+  esp_wifi_set_ps(WIFI_PS_NONE);
+  esp_coex_preference_set(ESP_COEX_PREFER_WIFI);
+}
+
 void tiWifiSet(const char* ssid, const char* pass)
 {
-  webfiles::setCredentials(ssid, pass);
+  if (!ssid) { return; }
+  g_wifiPrefs.begin("tiwifi", false);
+  g_wifiPrefs.putString("ssid", ssid);
+  g_wifiPrefs.putString("pass", pass ? pass : "");
+  g_wifiPrefs.end();
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, pass ? pass : "");
+  applyWifiRadioPolicy();
 }
+
 void tiWifiForget()
 {
-  webfiles::forget();
+  g_wifiPrefs.begin("tiwifi", false);
+  g_wifiPrefs.clear();
+  g_wifiPrefs.end();
+  WiFi.disconnect(true /*wifioff*/, true /*eraseAP*/);
 }
+
 void tiWifiStatus(char* out, int outSize)
 {
-  webfiles::status(out, outSize);
+  if (!out || outSize < 1) { return; }
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    snprintf(out, outSize, "ONLINE %s", WiFi.localIP().toString().c_str());
+  }
+  else
+  {
+    snprintf(out, outSize, "OFFLINE");
+  }
 }
-void tiWifiOff()
-{
-  webfiles::radioOff();
-}
+
 void tiWifiOn()
 {
-  webfiles::radioOn();
+  g_wifiPrefs.begin("tiwifi", true /*readOnly*/);
+  String ssid = g_wifiPrefs.getString("ssid", "");
+  String pass = g_wifiPrefs.getString("pass", "");
+  g_wifiPrefs.end();
+  if (ssid.length() > 0)
+  {
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid.c_str(), pass.c_str());
+    applyWifiRadioPolicy();
+  }
+}
+
+void tiWifiOff()
+{
+  WiFi.disconnect(true /*wifioff*/);
+  WiFi.mode(WIFI_OFF);
 }
 
 // `BLE` shell command — prints the bonded-peer table to the BASIC console
@@ -4023,9 +4087,16 @@ void setup()
   // in STA mode. Non-blocking — the connect happens in the background
   // while the title screen and interpreter come up. BLE-first ordering
   // (above) gives BLE the cleaner coexistence slot per Espressif's
-  // RF coexistence guide. With no creds in NVS, this is a no-op until
-  // the user types CALL WIFI("ssid","pass") at the prompt.
-  webfiles::begin();
+  // RF coexistence guide. With no creds in NVS, tiWifiOn is a no-op
+  // until the user types CALL WIFI("ssid","pass") at the prompt.
+  tiWifiOn();
+
+  // Start the shared HTTP file manager (JonVogel/TI_Web_Files_ESP).
+  // Pass SD_MMC so /api/files /api/file /api/upload can serve SDCARD;
+  // pass nullptr to disable SDCARD-side endpoints. The library handles
+  // all routes itself — JSON-only, no in-browser SPA (use the bundled
+  // ti_files.py Tk client on a PC instead).
+  webfiles::init(&SD_MMC);
 
   // Show TI boot screen and wait for a key
   showBootScreen();
