@@ -2005,7 +2005,12 @@ static void cmdSave(const char* filename)
     return;
   }
 
-  // FLASH or SDCARD — text .bas file.
+  // FLASH or SDCARD — V9T9 PROGRAM-format binary (matches a real TI's
+  // SAVE: a memory dump of the VDP region holding the program, with
+  // an 8-byte header + line-number table + per-line [len][toks][0x00]).
+  // Same bytes as the DSK target; only the destination differs. This
+  // means a file saved on FLASH can be COPY'd to a DSK image, dropped
+  // onto a real TI's disk, and OLD'd there without further conversion.
   fs::FS* fsRef = &LittleFS;
   const char* devLabel = "FLASH";
   if (tgt.kind == progio::KIND_SDCARD)
@@ -2015,39 +2020,52 @@ static void cmdSave(const char* filename)
     devLabel = "SDCARD";
   }
 
+  uint8_t* progBuf = (uint8_t*)malloc(8192);
+  if (!progBuf) { printError("* OUT OF MEMORY"); return; }
+  int size = progio::saveProgramBytes(PROG_SRC, progBuf, 8192);
+  if (size <= 0)
+  {
+    free(progBuf);
+    printError("* FILE ERROR");
+    return;
+  }
+
   char path[48];
   snprintf(path, sizeof(path), "/%s.bas", tgt.name);
   File f = fsRef->open(path, "w");
   if (!f)
   {
+    free(progBuf);
+    printError("* FILE ERROR");
+    return;
+  }
+  size_t written = f.write(progBuf, (size_t)size);
+  f.close();
+  free(progBuf);
+  if (written != (size_t)size)
+  {
     printError("* FILE ERROR");
     return;
   }
 
-  char buf[256];
-  for (int i = 0; i < em.programSize(); i++)
-  {
-    ProgramLine* line = em.getLine(i);
-    int n = snprintf(buf, sizeof(buf), "%d ", line->lineNum);
-    detokenizeLine(line->tokens, line->length, &buf[n], sizeof(buf) - n);
-    f.println(buf);
-    tiYield();
-  }
-  f.close();
-
   char msg[64];
-  snprintf(msg, sizeof(msg), "SAVED: %s%s", devLabel, path);
+  snprintf(msg, sizeof(msg), "SAVED: %s%s (%d bytes)", devLabel, path, size);
   printLine(msg);
 }
 
 // OLD <spec>
-//   FLASH.NAME / bare NAME    → load text .bas from LittleFS
-//   SDCARD.NAME               → load text .bas from SD_MMC
+//   FLASH.NAME / bare NAME    → load V9T9 PROGRAM binary from LittleFS
+//                               (auto-falls back to text for pre-binary
+//                               saves still on the filesystem)
+//   SDCARD.NAME               → load V9T9 PROGRAM binary from SD_MMC
+//                               (same auto-detect fallback)
 //   DSKn.NAME                 → load V9T9 PROGRAM binary from .dsk image
 //
 // Smart .bas fallback applies to flat-fs targets: OLD FLASH.FOO finds
 // /FOO if it exists, else /FOO.bas. SAVE-created files (.bas extension)
-// load transparently from a bare name.
+// load transparently from a bare name. All three targets now use the
+// same on-disk byte format as a real TI-99/4A SAVE, so a program saved
+// to FLASH can be COPY'd to a DSK image and loaded on a real TI.
 static void cmdOld(const char* filename)
 {
   progio::Target tgt;
@@ -2107,17 +2125,68 @@ static void cmdOld(const char* filename)
     return;
   }
 
-  em.clearProgram();
-  while (f.available())
+  // Auto-detect format. SAVE used to write text .bas listings here;
+  // it now writes V9T9 PROGRAM binary. Sniff the first 8 bytes for a
+  // valid V9T9 header (lntBot == 0x0008, plausible ordering, and the
+  // documented cksum = lntTop ^ lntBot ^ progTop). A text BASIC
+  // listing starting with an ASCII digit can't accidentally satisfy
+  // all three conditions, so this is a safe discriminator and lets
+  // pre-fix text saves keep loading.
+  size_t fsize = (size_t)f.size();
+  bool isBinary = false;
+  if (fsize >= 12)
   {
-    String line = f.readStringUntil('\n');
-    line.trim();
-    if (line.length() > 0)
+    uint8_t hdr[8];
+    if (f.read(hdr, 8) == 8)
     {
-      processInput(line.c_str());
+      uint16_t cksum   = ((uint16_t)hdr[0] << 8) | hdr[1];
+      uint16_t lntTop  = ((uint16_t)hdr[2] << 8) | hdr[3];
+      uint16_t lntBot  = ((uint16_t)hdr[4] << 8) | hdr[5];
+      uint16_t progTop = ((uint16_t)hdr[6] << 8) | hdr[7];
+      if (lntBot == 0x0008 && lntTop >= lntBot && progTop > lntTop &&
+          cksum == (lntTop ^ lntBot ^ progTop))
+      {
+        isBinary = true;
+      }
     }
+    f.seek(0);
   }
-  f.close();
+
+  if (isBinary)
+  {
+    // V9T9 PROGRAM binary — same loader the DSK target uses.
+    uint8_t* progBuf = (uint8_t*)malloc(fsize);
+    if (!progBuf) { f.close(); printError("* OUT OF MEMORY"); return; }
+    size_t got = f.read(progBuf, fsize);
+    f.close();
+    if (got != fsize)
+    {
+      free(progBuf);
+      printError("* FILE ERROR");
+      return;
+    }
+    bool ok = progio::loadProgramBytes(progBuf, (int)got, PROG_DST,
+                                       MAX_LINE_TOKENS);
+    free(progBuf);
+    if (!ok) { printError("* BAD PROGRAM"); return; }
+  }
+  else
+  {
+    // Back-compat text path — handles .bas files written by the
+    // pre-binary SAVE. Each line goes through processInput so any
+    // syntax that was legal at the prompt remains legal here.
+    em.clearProgram();
+    while (f.available())
+    {
+      String line = f.readStringUntil('\n');
+      line.trim();
+      if (line.length() > 0)
+      {
+        processInput(line.c_str());
+      }
+    }
+    f.close();
+  }
 
   char msg[64];
   snprintf(msg, sizeof(msg), "LOADED: %s%s", devLabel, path);
