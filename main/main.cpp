@@ -1978,6 +1978,28 @@ static void cmdRun()
   em.run();
 }
 
+// Forward-declare cmdOld — its body is later in the file but
+// cmdChainLoad (right below) and processInput's RUN handler both
+// call it.
+static void cmdOld(const char* filename);
+
+// Chain into another program: RUN "device.program-name". Called both at
+// the prompt (cmdChainLoad("DSK1.GAME") above in processInput) and via
+// the interpreter's TP_RUN_SPEC dispatch when the statement appears
+// inside a running program (e.g. `200 RUN "DSK1.GAME"` in a launcher
+// menu). cmdOld swaps the in-memory program for the named one (FLASH./
+// SDCARD./DSK<n>. prefix or bare-name FLASH default); em.run() then
+// resets vars + starts executing from line 1.
+static void cmdChainLoad(const char* spec)
+{
+  if (!spec || !*spec) return;
+  cmdOld(spec);
+  if (em.programSize() > 0)
+  {
+    em.run();
+  }
+}
+
 static void cmdBye()
 {
   tiClearScreen();
@@ -3727,6 +3749,46 @@ static void processInput(const char* input)
   if (strncasecmp(&input[pos], "RUN", 3) == 0 &&
       (input[pos + 3] == '\0' || input[pos + 3] == ' '))
   {
+    // Bare RUN, RUN <line-number>, or RUN "device.program-name" — three
+    // TI XB forms, all handled at the prompt. Mid-program statement
+    // forms go through the token_parser instead; the load/jump logic
+    // there reuses the same cmdChainLoad / em.runFromLine entries.
+    int rp = pos + 3;
+    while (input[rp] == ' ' || input[rp] == '\t') rp++;
+    if (input[rp] == '\0')
+    {
+      cmdRun();
+      return;
+    }
+    if (input[rp] == '"' || input[rp] == '\'')
+    {
+      char quote = input[rp++];
+      char spec[64];
+      int n = 0;
+      while (input[rp] && input[rp] != quote && n < (int)sizeof(spec) - 1)
+      {
+        spec[n++] = input[rp++];
+      }
+      spec[n] = '\0';
+      // Load the named program + start it. Single call; the chain
+      // loader handles both halves so the in-program statement form
+      // and the command-line form take the exact same code path.
+      cmdChainLoad(spec);
+      return;
+    }
+    if (input[rp] >= '0' && input[rp] <= '9')
+    {
+      int ln = 0;
+      while (input[rp] >= '0' && input[rp] <= '9')
+      {
+        ln = ln * 10 + (input[rp++] - '0');
+      }
+      em.runFromLine((uint16_t)ln);
+      return;
+    }
+    // Unknown trailing junk — fall through to the normal "RUN" path,
+    // which will tokenize the whole line and either succeed (if the
+    // tokenizer recognizes it) or print SYNTAX ERROR.
     cmdRun();
     return;
   }
@@ -4236,6 +4298,12 @@ void setup()
   em.setPrintError(printError);
   em.setPrintString(tiPrintString);
   em.setGetLine(getInputLine);
+  // Wire RUN "device.program-name" — the interpreter unwinds the
+  // current run loop and hands the spec here, where cmdChainLoad
+  // performs OLD-style loading and re-enters em.run() with the new
+  // program. Without this, mid-program RUN <spec> prints a visible
+  // "* RUN <spec> NOT WIRED" diagnostic instead of silently failing.
+  em.setChainLoader(cmdChainLoad);
 
   char statusBuf[40];
   snprintf(statusBuf, sizeof(statusBuf), "TI BASIC Sim | Free: %dK",
