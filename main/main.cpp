@@ -1045,6 +1045,7 @@ static void showBootScreen()
   drawText("HOME COMPUTER",                11);   // TI row 12
   drawText("READY-PRESS ANY KEY TO BEGIN", 16);   // TI row 17
   drawText("\x80" "1981    TEXAS INSTRUMENTS", 22);   // TI row 23 with ©
+  drawText("TI32 " TI32_VERSION,                23);   // TI row 24 — emulator build tag
 
   Serial.println("PRESS ANY KEY TO CONTINUE");
 
