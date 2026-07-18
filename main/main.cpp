@@ -1144,7 +1144,17 @@ static int  inputPos = 0;          // len of input so far (for main loop)
 static bool inputReady = false;
 
 static char lastCommandLine[MAX_INPUT_LEN + 1] = {0};
-static bool editInsertMode = false;
+// Editor state + buffer/cursor primitives moved to host_common
+// (ti_host_editor.cpp). processEditChar / getInputLine / checkInput
+// still live below because they touch em (interpreter) and box's own
+// BLE keyboard driver.
+using tihost::editInsertMode;
+using tihost::editMode;
+using tihost::lastRecalledLineNum;
+using tihost::drawCursor;
+using tihost::editPosToRC;
+using tihost::editSyncCursor;
+using tihost::redrawLineTail;
 
 // NUMBER mode: when active, editorBeginLine pre-fills the prompt with the
 // next auto-incrementing line number. Set by cmdNumber(); cleared when the
@@ -1154,82 +1164,10 @@ static int  numModeIncr   = 0;
 static int  numModeNext   = 0;
 static bool numModeActive = false;
 
-// Current editor mode (see line_editor.h). Starts in ENTRY on every new
-// line, flips to EDIT on successful recall (REDO or <N>+UP/<N>+DOWN).
-static EditMode editMode = EM_ENTRY;
-
-// The program line currently under edit — used by EDIT-mode UP/DOWN
-// to move to the previous/next program line. -1 when not in EDIT mode.
-static int lastRecalledLineNum = -1;
-
 // Forward decls (needed by line-number recall and UP/DOWN commit)
 static int detokenizeLine(const uint8_t* tokens, int length, char* buf,
                           int bufSize);
 static int tokenizeLine(const char* src, uint8_t* tokens, int maxLen);
-
-// Draw a solid block cursor at the current position (inverted colors)
-static void drawCursor(bool visible)
-{
-  int px = cursorCol * CHAR_W + DISPLAY_X_OFFSET;
-  int py = cursorRow * CHAR_H + DISPLAY_Y_OFFSET;
-  if (visible)
-  {
-    tft.fillRect(px, py, CHAR_W, CHAR_H, tiPalette[2]);
-  }
-  else
-  {
-    drawCell(cursorCol, cursorRow);
-  }
-}
-
-// Sync global cursorCol/cursorRow with the edit state's logical position
-// Map a position in s.buf to a (row, col) on screen. Lines soft-wrap
-// across rows when (startCol + pos) >= COLS — the next character lands
-// at column 0 of the row below. Positions that fall above the top of
-// the screen (when the line has scrolled and startRow went negative)
-// return a negative row; callers must check before writing.
-static inline void editPosToRC(const LineEdit& s, int pos,
-                                int& outRow, int& outCol)
-{
-  int flat = s.startCol + pos;
-  outRow = s.startRow + flat / COLS;
-  outCol = flat % COLS;
-}
-
-static void editSyncCursor(const LineEdit& s)
-{
-  int row, col;
-  editPosToRC(s, s.pos, row, col);
-  // If wrapping put the cursor off the visible area (line scrolled past
-  // the top), clamp to the top row so the caret stays visible. Typing-
-  // side scroll-up keeps this from happening in normal use.
-  if (row < 0) row = 0;
-  if (row >= ROWS) row = ROWS - 1;
-  cursorRow = row;
-  cursorCol = col;
-}
-
-// Redraw buffer content starting at `fromPos`, plus `eraseExtra` trailing
-// cells (used after a shrink). Handles soft-wrap across multiple rows.
-static void redrawLineTail(const LineEdit& s, int fromPos, int eraseExtra)
-{
-  for (int i = fromPos; i < s.len; i++)
-  {
-    int row, col;
-    editPosToRC(s, i, row, col);
-    if (row < 0 || row >= ROWS) continue;
-    screenBuf[row][col] = s.buf[i];
-    drawCell(col, row);
-  }
-  for (int i = 0; i < eraseExtra; i++)
-  {
-    int row, col;
-    editPosToRC(s, s.len + i, row, col);
-    if (row < 0 || row >= ROWS) continue;
-    screenBuf[row][col] = ' ';
-    drawCell(col, row);
-  }
-}
 
 // Double-buffered serial input for fast paste.
 //
@@ -1353,22 +1291,8 @@ static int findProgramLineIndex(int lineNum)
   return -1;
 }
 
-// Replace buffer contents with `src`. Used by REDO and line-number recall.
-static void editReplaceLine(LineEdit& s, const char* src)
-{
-  int oldLen = s.len;
-  int n = 0;
-  while (src[n] && n < s.maxLen)
-  {
-    s.buf[n] = src[n];
-    n++;
-  }
-  s.buf[n] = '\0';
-  s.len = n;
-  s.pos = 0;
-  redrawLineTail(s, 0, (oldLen > s.len) ? (oldLen - s.len) : 0);
-  editSyncCursor(s);
-}
+// editReplaceLine moved to host_common — see `using` above.
+using tihost::editReplaceLine;
 
 // Re-tokenize the current edit buffer and store it back into the program.
 // Called before UP/DOWN navigation so edits to the line are preserved as
@@ -1426,112 +1350,12 @@ static bool editBufferIsAllDigits(const LineEdit& s)
   return true;
 }
 
-// Remove the char at `s.pos` (if any) and redraw the tail.
-static void editDeleteAtCursor(LineEdit& s)
-{
-  if (s.pos >= s.len) return;
-  for (int i = s.pos; i < s.len - 1; i++) s.buf[i] = s.buf[i + 1];
-  s.len--;
-  s.buf[s.len] = '\0';
-  redrawLineTail(s, s.pos, 1);
-  editSyncCursor(s);
-}
-
-// Backspace: PC-style — delete the character to the left of the cursor
-// and move the cursor onto its position. Implemented as "move cursor
-// left, then delete char now under it". Mirrors the erase to the USB
-// serial terminal with the standard "\b \b" sequence so the serial
-// monitor visibly removes the char too (editTypeChar echoes typed
-// chars to Serial for paste visibility, so without this the terminal
-// kept showing what was streamed and backspace looked like a no-op).
-static void editBackspace(LineEdit& s)
-{
-  if (s.pos == 0) return;
-  s.pos--;
-  editDeleteAtCursor(s);
-  Serial.write("\b \b", 3);
-  Serial.flush();
-}
-
-// Insert or overwrite `c` at the cursor and advance.
-// When `pos` reaches the right edge of the screen, the line soft-wraps
-// to the next row. If that row would be past the bottom of the screen,
-// scroll the whole display up by one — the line's earlier rows shift
-// up with it and `startRow` decrements to track them. Without this the
-// character went into the buffer fine but never reached the screen,
-// and the cursor stuck at the right edge while typing continued
-// invisibly — the bug this fix addresses.
-static void editTypeChar(LineEdit& s, uint8_t c)
-{
-  if (s.len >= s.maxLen) return;
-
-  if (editInsertMode && s.pos < s.len)
-  {
-    for (int i = s.len; i > s.pos; i--) s.buf[i] = s.buf[i - 1];
-    s.buf[s.pos] = c;
-    s.len++;
-    s.buf[s.len] = '\0';
-    redrawLineTail(s, s.pos, 0);
-    s.pos++;
-    editSyncCursor(s);
-  }
-  else
-  {
-    s.buf[s.pos] = c;
-    if (s.pos == s.len)
-    {
-      s.len++;
-      s.buf[s.len] = '\0';
-    }
-    int row, col;
-    editPosToRC(s, s.pos, row, col);
-    while (row >= ROWS)
-    {
-      scrollUp();
-      s.startRow--;
-      row--;
-    }
-    if (row >= 0)
-    {
-      screenBuf[row][col] = c;
-      drawCell(col, row);
-    }
-    Serial.write(c);       // mirror to serial for paste visibility
-    s.pos++;
-    // Proactive scroll: if the cursor's NEW position would land on a
-    // row past the bottom of the screen, scroll now. Without this, the
-    // cursor jumps onto the bottom row at col 0 — which is where the
-    // ">" prompt character is sitting — and visually the wrap looks
-    // one character late (the prompt still shows below where typing
-    // continues). Scrolling now shifts the prompt + already-typed
-    // content up by one row, so the cursor lands on a freshly-blank
-    // wrap row.
-    {
-      int crow, ccol;
-      editPosToRC(s, s.pos, crow, ccol);
-      while (crow >= ROWS)
-      {
-        scrollUp();
-        s.startRow--;
-        crow--;
-      }
-    }
-    editSyncCursor(s);
-  }
-}
-
-// Wipe the current line and return to ENTRY mode.
-static void editEraseLine(LineEdit& s)
-{
-  int oldLen = s.len;
-  s.len = 0;
-  s.pos = 0;
-  s.buf[0] = '\0';
-  redrawLineTail(s, 0, oldLen);
-  editSyncCursor(s);
-  editMode = EM_ENTRY;
-  lastRecalledLineNum = -1;
-}
+// editDeleteAtCursor / editBackspace / editTypeChar / editEraseLine
+// all moved to host_common — see `using` block near line 1147.
+using tihost::editDeleteAtCursor;
+using tihost::editBackspace;
+using tihost::editTypeChar;
+using tihost::editEraseLine;
 
 static EditResult processEditChar(uint8_t c, LineEdit& s)
 {
