@@ -26,6 +26,9 @@ idf_component_register(
         speech                 # TMS5220 LPC-10 synth + cartridge ROM
         ble_hid_host           # NimBLE multi-peer BLE HID host
         file_handling          # LittleFS / SD / V9T9 DSK file I/O
+        host_common            # shared host layer (palette, resolveColor,
+                               # eventually line editor + tiPrint family +
+                               # boot screen + sprites + command dispatch)
         # Third-party Arduino libraries (submodules under components/).
         LovyanGFX
         NimBLE-Arduino

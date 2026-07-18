@@ -528,32 +528,16 @@ static uint16_t bgColor = 0x07FF;  // cyan
 static char screenBuf[ROWS][COLS];
 static char prevScreenBuf[ROWS][COLS];
 
-// TI color palette (indices 1-16) → RGB565
-static const uint16_t tiPalette[17] =
-{
-  0x0000,   // 0 unused
-  0x0000,   // 1 transparent (resolves to screen color in drawCell)
-  0x0000,   // 2 black
-  0x0585,   // 3 medium green
-  0x2D8B,   // 4 light green
-  0x0012,   // 5 dark blue
-  0x0417,   // 6 light blue
-  0x8000,   // 7 dark red
-  0x0EBF,   // 8 cyan
-  0xE000,   // 9 medium red
-  0xF2A3,   // 10 light red
-  0xD5C0,   // 11 dark yellow
-  0xE600,   // 12 light yellow
-  0x0280,   // 13 dark green
-  0xB816,   // 14 magenta
-  0xC618,   // 15 gray
-  0xFFFF,   // 16 white
-};
-
-// Per-character color palette indices (1-16; 1=transparent=use screen color)
-static uint8_t charFgIdx[256];
-static uint8_t charBgIdx[256];
-static uint8_t screenColorIdx = 8;   // cyan by default
+// TI palette + per-char color indices + resolveColor now live in the
+// shared host_common component (ti-emulator/components/host_common).
+// Include picks them up as `extern` symbols; definitions land in the
+// component's ti_host_color.cpp so box + sunton + guition share one copy.
+#include "ti_host.h"
+using tihost::tiPalette;
+using tihost::charFgIdx;
+using tihost::charBgIdx;
+using tihost::screenColorIdx;
+using tihost::resolveColor;
 
 static void initDisplay()
 {
@@ -568,17 +552,7 @@ static void initDisplay()
   tft.setTextColor(fgColor, bgColor);
 }
 
-// Resolve a palette index to RGB565, with transparency (1) falling through
-// to the screen color.
-static uint16_t resolveColor(uint8_t idx)
-{
-  if (idx < 1 || idx > 16) return 0;
-  if (idx == 1)
-  {
-    return tiPalette[screenColorIdx];
-  }
-  return tiPalette[idx];
-}
+// resolveColor moved to host_common — see ti_host.h `using` above.
 
 static void drawCell(int col, int row)
 {
@@ -656,6 +630,16 @@ static void scrollUp()
 // would NOT let IDLE run.
 void tiYield()
 {
+  // If a remote /api/run request arrived while a program is executing,
+  // raise the same break flag CLEAR/FCTN+4 sets. exec_manager polls
+  // this every statement, so em.run() unwinds within a few lines; the
+  // main loop then drains consumePendingRun() and dispatches the new
+  // spec via the chain loader. Setting it is idempotent — the
+  // interpreter just consumes-and-clears next chance.
+  if (webfiles::hasPendingRun())
+  {
+    bleKbBreakRequested = true;
+  }
   delay(1);
 }
 
@@ -738,16 +722,14 @@ static void gfxPrepareInput()
 }
 
 // Reset graphics to editor defaults (called when program ends)
-// Reset all character colors to default: fg=black(2), bg=transparent(1).
-// Screen color defaults to cyan(8), so transparent bg shows cyan.
+// Reset all character colors to default via the shared host_common
+// implementation, then sync the box-local fgColor/bgColor cache
+// (used by initDisplay() and some direct tft calls). host_common's
+// version handles charFgIdx/charBgIdx/screenColorIdx uniformly across
+// hosts; the fgColor/bgColor mirror is a box-specific optimization.
 static void gfxResetColors()
 {
-  for (int i = 0; i < 256; i++)
-  {
-    charFgIdx[i] = 2;   // black
-    charBgIdx[i] = 1;   // transparent (→ screen color)
-  }
-  screenColorIdx = 8;   // cyan
+  tihost::gfxResetColors();
   fgColor = tiPalette[2];
   bgColor = tiPalette[8];
 }
@@ -1060,7 +1042,7 @@ static void showBootScreen()
     bool prevPair = false;
     bool wasInBootUI = true;
     unsigned long lastCount = 0;
-    while (!Serial.available() && !bleKbAvailable())
+    while (!Serial.available() && !bleKbAvailable() && !webfiles::hasPendingRun())
     {
       bleKbTask();
       webfiles::tick();
@@ -1138,7 +1120,7 @@ static void showBootScreen()
     bool prevPair = false;
     bool wasInBootUI = true;
     unsigned long lastCount = 0;
-    while (!Serial.available() && !bleKbAvailable())
+    while (!Serial.available() && !bleKbAvailable() && !webfiles::hasPendingRun())
     {
       bleKbTask();
       webfiles::tick();
@@ -2040,6 +2022,15 @@ static void cmdOld(const char* filename);
 static void cmdChainLoad(const char* spec)
 {
   if (!spec || !*spec) return;
+  // Brief pause + clear so the transition reads cleanly when this
+  // chain load was kicked off by /api/run interrupting a running
+  // program — without it the previous program's last draw collides
+  // with the new program's first output, and the BREAKPOINT line
+  // can be still landing as the new RUN starts. Cost on a quiet
+  // chain load (BASIC's own RUN "DEV.NAME") is the same 300 ms of
+  // visible wipe, which is fine for a deliberate program switch.
+  delay(300);
+  tiClearScreen();
   cmdOld(spec);
   if (em.programSize() > 0)
   {
@@ -4366,6 +4357,21 @@ void loop()
   pasteDrainSerial();
   bleKbTask();
   webfiles::tick();
+
+  // Drain any RUN request posted via /api/run. The HTTP handler can't
+  // call the chain loader directly (would block the AsyncWebServer
+  // task), so it queues a DEV.NAME spec; we dispatch it here on the
+  // main thread, same code path BASIC's `RUN "DEV.NAME"` statement
+  // uses. Endpoint already rejects with 503 while s_busy=true, so a
+  // queued spec can't collide with an in-flight em.run().
+  {
+    char rspec[80];
+    if (webfiles::consumePendingRun(rspec, sizeof(rspec)))
+    {
+      cmdChainLoad(rspec);
+    }
+  }
+
   checkInput();
   spriteTick();
 
