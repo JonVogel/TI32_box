@@ -98,7 +98,6 @@ struct LineEdit;
 static void fillBackground(uint16_t bg);
 static void drawPairingScreen();
 static void updatePairingCountdown(unsigned long remainMs);
-static bool editorBufferIsAutoFillOnly(const LineEdit& s);
 static void spriteRedrawAll();
 static void catPrintLine(const char* s);
 extern int  g_catLines;
@@ -1181,108 +1180,35 @@ static int tokenizeLine(const char* src, uint8_t* tokens, int maxLen);
 // editor's blink/yield points, inside getInputLine, etc.). editorReadChar
 // then reads from this buffer, decoupling the producer (USB) from the
 // consumer (display-bound editor) entirely.
-#define PASTE_BUF_SIZE 16384
-static uint8_t pasteBuf[PASTE_BUF_SIZE];
-static int pasteHead = 0;
-static int pasteTail = 0;
+// Paste ring + editorReadChar + editBufferIsAllDigits + editorBuffer-
+// IsAutoFillOnly moved to host_common. The interpreter-integration
+// helpers below (findProgramLineIndex / commitEditedLine /
+// loadProgramLineToEdit) are box-local implementations that touch em
+// (the ExecManager instance) + the tokenizer/detokenizer; they get
+// registered with host_common via setInterpreterHooks() in setup()
+// so the shared processEditChar can call through them.
+using tihost::pasteDrainSerial;
+using tihost::pasteAvailable;
+using tihost::pasteRead;
+using tihost::editorReadChar;
+using tihost::editBufferIsAllDigits;
+using tihost::editorBufferIsAutoFillOnly;
+using tihost::editReplaceLine;
 
-static void pasteDrainSerial()
+// hostReadBleKey wrapper — combined "have BLE key? read it" — used by
+// host_common's editorReadChar via the TiDisplay hook.
+static int hostReadBleKey_impl()
 {
-  while (Serial.available())
-  {
-    int next = (pasteHead + 1) % PASTE_BUF_SIZE;
-    if (next == pasteTail) break;   // full — back-pressure onto Serial
-    pasteBuf[pasteHead] = (uint8_t)Serial.read();
-    pasteHead = next;
-  }
-}
-
-static bool pasteAvailable()
-{
-  return pasteHead != pasteTail;
-}
-
-static int pasteRead()
-{
-  if (pasteHead == pasteTail) return -1;
-  uint8_t c = pasteBuf[pasteTail];
-  pasteTail = (pasteTail + 1) % PASTE_BUF_SIZE;
-  return c;
-}
-
-// Reads the next editor byte from the paste buffer (Serial side) or BLE,
-// normalizing Serial line endings (\r\n → one Enter; lone \n → \r) and
-// dropping tabs (since \t = RIGHT-arrow in the TI encoding).
-// Returns -1 if nothing is available.
-static int editorReadChar()
-{
-  static bool skipNextLf = false;
-
-  // Top up from Serial before each read so we don't block on the editor's
-  // pace while USB has more bytes waiting.
-  pasteDrainSerial();
-
-  while (pasteAvailable())
-  {
-    uint8_t c = (uint8_t)pasteRead();
-    if (c == '\r') { skipNextLf = true;  return '\r'; }
-    if (c == '\n')
-    {
-      if (skipNextLf) { skipNextLf = false; continue; }
-      return '\r';
-    }
-    skipNextLf = false;
-    if (c == '\t') continue;
-    // Most PC terminals send Ctrl+H (0x08) for the BACKSPACE key, but the
-    // editor uses 0x08 internally for LEFT-arrow (the TI CHR$ code that
-    // BLE keyboards' arrow keys are mapped to). Re-tag serial 0x08 as
-    // 0x7F so it hits the BACKSPACE handler. BLE input bypasses this
-    // path, so LEFT-arrow on BLE keyboards still works.
-    if (c == 0x08) return 0x7F;
-    // ANSI CSI cursor sequence — PC terminals send arrow keys as
-    // ESC [ A/B/C/D (UP/DOWN/RIGHT/LEFT), DEL as ESC [ 3 ~, HOME as
-    // ESC [ H. Without this the [, A, etc. get inserted as literal
-    // chars (the "garbage" symptom). Terminals send the whole sequence
-    // back-to-back so the rest is already in the paste buffer when we
-    // see ESC; if it isn't, treat as a lone ESC (used by CAT/DIR cancel).
-    if (c == 0x1B)
-    {
-      if (pasteAvailable() && pasteBuf[pasteTail] == '[')
-      {
-        pasteRead();   // consume '['
-        if (!pasteAvailable()) return 0x1B;
-        uint8_t code = (uint8_t)pasteRead();
-        switch (code)
-        {
-          case 'A': return 0x0B;   // UP
-          case 'B': return 0x0A;   // DOWN
-          case 'C': return 0x09;   // RIGHT
-          case 'D': return 0x08;   // LEFT
-          case 'H': return 0x05;   // HOME = BEGIN (FCTN+5)
-          case '3':                 // ESC [ 3 ~ — Delete key
-            if (pasteAvailable() && pasteBuf[pasteTail] == '~')
-            {
-              pasteRead();
-              return 0x07;          // DEL (FCTN+1)
-            }
-            continue;
-          default: continue;        // unknown CSI — swallow
-        }
-      }
-      return 0x1B;
-    }
-    return c;
-  }
-
-  if (bleKbAvailable())
-  {
-    return bleKbRead();
-  }
+  if (bleKbAvailable()) return bleKbRead();
   return -1;
 }
 
-// Find the program index of a line with this lineNum, or -1 if absent.
-static int findProgramLineIndex(int lineNum)
+// TiInterpreterHooks implementations. These stay per-host because they
+// call em (the local ExecManager instance) + tokenizeLine +
+// detokenizeLine directly; wiring them into host_common as callbacks
+// keeps the interpreter instance out of shared code for now.
+
+static int findProgramLineIndex_impl(int lineNum)
 {
   for (int i = 0; i < em.programSize(); i++)
   {
@@ -1291,13 +1217,7 @@ static int findProgramLineIndex(int lineNum)
   return -1;
 }
 
-// editReplaceLine moved to host_common — see `using` above.
-using tihost::editReplaceLine;
-
-// Re-tokenize the current edit buffer and store it back into the program.
-// Called before UP/DOWN navigation so edits to the line are preserved as
-// if Enter had been pressed. Returns false only on tokenize failure.
-static bool commitEditedLine(const LineEdit& s)
+static bool commitEditedLine_impl(const LineEdit& s)
 {
   int p = 0;
   while (p < s.len && s.buf[p] == ' ') p++;
@@ -1325,9 +1245,7 @@ static bool commitEditedLine(const LineEdit& s)
   return true;
 }
 
-// Load the program line at `idx` into the edit buffer, flip to EDIT mode,
-// and remember the line number so subsequent UP/DOWN browse prev/next.
-static void loadProgramLineToEdit(LineEdit& s, int idx)
+static void loadProgramLineToEdit_impl(LineEdit& s, int idx)
 {
   ProgramLine* pl = em.getLine(idx);
   if (!pl) return;
@@ -1339,16 +1257,12 @@ static void loadProgramLineToEdit(LineEdit& s, int idx)
   editMode = EM_EDIT;
 }
 
-// Test whether the current buffer contains nothing but decimal digits.
-static bool editBufferIsAllDigits(const LineEdit& s)
-{
-  if (s.len == 0) return false;
-  for (int i = 0; i < s.len; i++)
-  {
-    if (!isdigit((unsigned char)s.buf[i])) return false;
-  }
-  return true;
-}
+static int programSize_impl() { return em.programSize(); }
+
+using tihost::findProgramLineIndex;
+using tihost::commitEditedLine;
+using tihost::loadProgramLineToEdit;
+using tihost::programSize;
 
 // editDeleteAtCursor / editBackspace / editTypeChar / editEraseLine
 // all moved to host_common — see `using` block near line 1147.
@@ -1630,20 +1544,7 @@ static void editorBeginLine()
   }
 }
 
-// True if the buffer is exactly "<digits> " (at least one trailing space)
-// with nothing else — the NUMBER-mode auto-fill form. Lets us detect
-// "Enter without adding anything" so we can exit NUMBER mode cleanly
-// instead of deleting the line.
-static bool editorBufferIsAutoFillOnly(const LineEdit& s)
-{
-  if (s.len == 0) return false;
-  int p = 0;
-  if (!isdigit((unsigned char)s.buf[p])) return false;
-  while (p < s.len && isdigit((unsigned char)s.buf[p])) p++;
-  if (p >= s.len || s.buf[p] != ' ') return false;
-  while (p < s.len && s.buf[p] == ' ') p++;
-  return p >= s.len;
-}
+// editorBufferIsAutoFillOnly moved to host_common — see `using` block above.
 
 static void editorCursorTick()
 {
@@ -3977,8 +3878,19 @@ void setup()
     display.hostHonk           = hostHonk_impl;
     display.hostPostScroll     = hostPostScroll_impl;
     display.hostFillBackground = hostFillBackground_impl;
+    display.hostReadBleKey     = hostReadBleKey_impl;
 
     tihost::hostCommonInit(cfg, display);
+
+    // Wire the interpreter callbacks host_common's editor calls when
+    // it needs to look up a program line or commit an edit. The impls
+    // above pass through to box's local em (ExecManager instance).
+    tihost::TiInterpreterHooks ihooks = {};
+    ihooks.findProgramLineIndex  = findProgramLineIndex_impl;
+    ihooks.commitEditedLine      = commitEditedLine_impl;
+    ihooks.loadProgramLineToEdit = loadProgramLineToEdit_impl;
+    ihooks.programSize           = programSize_impl;
+    tihost::setInterpreterHooks(ihooks);
   }
 
   initAudio();
