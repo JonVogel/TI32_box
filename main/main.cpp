@@ -517,27 +517,22 @@ static int detokenizeLine(const uint8_t* tokens, int length, char* buf,
 static LGFX tft;
 
 
-static int cursorCol = 0;
-static int cursorRow = 0;
-
-// TI Extended BASIC colors (black text on cyan background)
-static uint16_t fgColor = 0x0000;  // black
-static uint16_t bgColor = 0x07FF;  // cyan
-
-// Display framebuffer
-static char screenBuf[ROWS][COLS];
-static char prevScreenBuf[ROWS][COLS];
-
-// TI palette + per-char color indices + resolveColor now live in the
-// shared host_common component (ti-emulator/components/host_common).
-// Include picks them up as `extern` symbols; definitions land in the
-// component's ti_host_color.cpp so box + sunton + guition share one copy.
+// Screen grid + cursor state + color caches now live in the shared
+// host_common component (ti-emulator/components/host_common). Same
+// import pattern as the palette below — `extern` in the header, one
+// definition in ti_host_screen.cpp.
 #include "ti_host.h"
 using tihost::tiPalette;
 using tihost::charFgIdx;
 using tihost::charBgIdx;
 using tihost::screenColorIdx;
 using tihost::resolveColor;
+using tihost::screenBuf;
+using tihost::prevScreenBuf;
+using tihost::cursorCol;
+using tihost::cursorRow;
+using tihost::fgColor;
+using tihost::bgColor;
 
 static void initDisplay()
 {
