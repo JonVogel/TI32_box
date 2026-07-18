@@ -909,23 +909,9 @@ static void fillBackground(uint16_t bg)
   tft.fillScreen(bg);
 }
 
-// TI-Texas logo — 3×3 character grid taken straight from the TI title
-// screen. Each entry is the CALL CHAR pattern for one cell (row,col).
-// Cells are laid out row-major: 129=(1,1) 130=(1,2) 131=(1,3)
-//                                132=(2,1) 133=(2,2) 134=(2,3)
-//                                135=(3,1) 136=(3,2) 137=(3,3)
-static const uint8_t tiLogoChars[9][8] =
-{
-  {0x00, 0x01, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03},  // (1,1)
-  {0x00, 0xFC, 0x04, 0x05, 0x05, 0x04, 0x06, 0x02},  // (1,2)
-  {0x00, 0x00, 0x80, 0x40, 0x40, 0x80, 0x00, 0x0C},  // (1,3)
-  {0x03, 0xFF, 0x80, 0xC0, 0x40, 0x60, 0x38, 0x1C},  // (2,1)
-  {0x0C, 0x19, 0x21, 0x21, 0x3D, 0x05, 0x05, 0x05},  // (2,2)
-  {0x12, 0xBA, 0x8A, 0x8A, 0xBA, 0xA1, 0xA1, 0xA1},  // (2,3)
-  {0x0E, 0x03, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00},  // (3,1)
-  {0xC4, 0xE2, 0x31, 0x10, 0x18, 0x0C, 0x07, 0x03},  // (3,2)
-  {0x22, 0x4C, 0x90, 0x20, 0x40, 0x40, 0x20, 0xE0},  // (3,3)
-};
+// tiLogoChars now lives in host_common (see ti_host.h). drawTexasLogo
+// below still calls the box-local drawCell — hence stays here for now.
+using tihost::tiLogoChars;
 
 // Redefine char codes 129..137 with the logo patterns and place them in
 // a 3×3 grid on screen with the top-left at (startRow, startCol).
@@ -946,18 +932,8 @@ static void drawTexasLogo(int startRow, int startCol)
   }
 }
 
-// 8x8 copyright glyph (©) used in the splash-screen copyright line.
-static const uint8_t copyrightBitmap[8] =
-{
-  0x3C,  // ..####..
-  0x42,  // .#....#.
-  0x99,  // #..##..#
-  0xA1,  // #.#....#
-  0xA1,  // #.#....#
-  0x99,  // #..##..#
-  0x42,  // .#....#.
-  0x3C,  // ..####..
-};
+// copyrightBitmap now lives in host_common (see ti_host.h).
+using tihost::copyrightBitmap;
 
 // TI-99/4A boot screen: colored stripes top and bottom, centered text.
 // Pattern approximates the 1981 TI home computer startup screen.
