@@ -533,6 +533,36 @@ using tihost::cursorCol;
 using tihost::cursorRow;
 using tihost::fgColor;
 using tihost::bgColor;
+// drawCell / refreshScreen / redrawScreen are now shared too — one
+// implementation in ti_host_render.cpp that scales the 8x8 ROM font
+// to cfg.char_w x cfg.char_h and pushes the resulting pixel buffer
+// through the TiDisplay hooks we register below in initDisplay().
+using tihost::drawCell;
+using tihost::refreshScreen;
+using tihost::redrawScreen;
+
+// TiDisplay hook wrappers. The shared render code calls these instead
+// of touching LovyanGFX directly. Each is a thin one-liner around the
+// module-level `tft` — the whole `tft.pushImage / fillRect / drawPixel`
+// API stays private to this file.
+static void hostPushCell_impl(int px, int py, int w, int h,
+                              const uint16_t* pixels)
+{
+  tft.pushImage(px, py, w, h, pixels);
+}
+static void hostFillRect_impl(int px, int py, int w, int h, uint16_t color)
+{
+  tft.fillRect(px, py, w, h, color);
+}
+static void hostPutPixel_impl(int px, int py, uint16_t color)
+{
+  tft.drawPixel(px, py, color);
+}
+static void hostFillScreen_impl(uint16_t color)
+{
+  tft.fillScreen(color);
+}
+static void hostFlush_impl() { /* LovyanGFX is direct-to-panel; no-op */ }
 
 static void initDisplay()
 {
@@ -549,59 +579,11 @@ static void initDisplay()
 
 // resolveColor moved to host_common — see ti_host.h `using` above.
 
-static void drawCell(int col, int row)
-{
-  uint8_t ch = (uint8_t)screenBuf[row][col];
-  int px = col * CHAR_W + DISPLAY_X_OFFSET;
-  int py = row * CHAR_H + DISPLAY_Y_OFFSET;
-
-  uint16_t fg = resolveColor(charFgIdx[ch]);
-  uint16_t bg = resolveColor(charBgIdx[ch]);
-
-  uint16_t pixBuf[64];
-  for (int y = 0; y < 8; y++)
-  {
-    uint8_t bits = charPatterns[ch][y];
-    for (int x = 0; x < 8; x++)
-    {
-      pixBuf[y * 8 + x] = (bits & 0x80) ? fg : bg;
-      bits <<= 1;
-    }
-  }
-  // LovyanGFX equivalent of Adafruit's drawRGBBitmap (note arg order swap)
-  tft.pushImage(px, py, 8, 8, pixBuf);
-}
-
-static void refreshScreen()
-{
-  for (int r = 0; r < ROWS; r++)
-  {
-    for (int c = 0; c < COLS; c++)
-    {
-      if (screenBuf[r][c] != prevScreenBuf[r][c])
-      {
-        drawCell(c, r);
-        prevScreenBuf[r][c] = screenBuf[r][c];
-      }
-    }
-  }
-}
-
-static void redrawScreen()
-{
-  // 24x32 = 768 cells * ~150us per drawCell = ~115ms — over the 5s WDT
-  // limit only if stacked with other work, but a per-row yield is cheap
-  // (24 yields) and keeps IDLE happy during boot screen + CALL CLEAR.
-  for (int r = 0; r < ROWS; r++)
-  {
-    for (int c = 0; c < COLS; c++)
-    {
-      drawCell(c, r);
-      prevScreenBuf[r][c] = screenBuf[r][c];
-    }
-    tiYield();
-  }
-}
+// drawCell / refreshScreen / redrawScreen moved to host_common — see
+// ti_host.h `using` at top of file. host_common's redrawScreen doesn't
+// insert a per-row tiYield() (box was the only host that did); at 8x8
+// native scale on box the whole grid renders in ~40 ms, well under the
+// 5 s watchdog, so the yield isn't structurally needed.
 
 static void scrollUp()
 {
@@ -4188,6 +4170,39 @@ void setup()
   // SD_MMC.begin() afterward avoids the rescue dance entirely.
 
   initDisplay();
+
+  // Register box's geometry + display hooks with host_common. Everything
+  // in ti-emulator/components/host_common that draws (drawCell,
+  // refreshScreen, redrawScreen, and eventually scrollUp/tiPrint family)
+  // dispatches through the TiDisplay pointers set here.
+  {
+    tihost::TiHostConfig cfg = {};
+    cfg.cols             = COLS;
+    cfg.rows             = ROWS;
+    cfg.char_w           = CHAR_W;
+    cfg.char_h           = CHAR_H;
+    cfg.screen_w         = SCREEN_W;
+    cfg.screen_h         = SCREEN_H;
+    cfg.display_x_offset = DISPLAY_X_OFFSET;
+    cfg.display_y_offset = DISPLAY_Y_OFFSET;
+    cfg.has_audio        = true;
+    cfg.has_ble_kb       = true;
+    cfg.has_wifi         = true;
+    cfg.has_pairing_ui   = true;
+
+    tihost::TiDisplay display = {};
+    display.hostBegin      = nullptr;
+    display.hostPushCell   = hostPushCell_impl;
+    display.hostFillRect   = hostFillRect_impl;
+    display.hostPutPixel   = hostPutPixel_impl;
+    display.hostFillScreen = hostFillScreen_impl;
+    display.hostFlush      = hostFlush_impl;
+    display.hostPaintBorder = nullptr;   // box has no TI-style border
+    display.hostHonk       = nullptr;    // hooked later from initAudio path
+
+    tihost::hostCommonInit(cfg, display);
+  }
+
   initAudio();
 
   // Now safe to bring up the SD card on the Box-3 SENSOR add-on (if
