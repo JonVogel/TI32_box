@@ -30,6 +30,11 @@ idf_component_register(
                                # eventually line editor + tiPrint family +
                                # boot screen + sprites + command dispatch)
         # Third-party Arduino libraries (submodules under components/).
+        # LovyanGFX comes in transitively via the display_lgfx_box
+        # component's REQUIRES; main.cpp uses it through the
+        # display_lgfx_box::tft extern so the direct dep isn't
+        # needed here anymore.
+        display_lgfx_box
         LovyanGFX
         NimBLE-Arduino
         ESPAsyncWebServer

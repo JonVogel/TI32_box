@@ -510,16 +510,14 @@ static int detokenizeLine(const uint8_t* tokens, int length, char* buf,
 // Display driver
 // ---------------------------------------------------------------------------
 
-// LovyanGFX's autodetect probes the SPI bus, identifies the panel chip
-// (ILI9342C on Box-3 V3), and configures pins, SPI host, backlight PWM,
-// and reset handling automatically.
-static LGFX tft;
+// LGFX + panel init + the six panel-side TiDisplay hooks now live in
+// the display_lgfx_box component (see components/display_lgfx_box/).
+// tft is exposed via `extern LGFX tft;` for main.cpp's remaining
+// direct calls (boot screen + BLE pairing UI). Those move into
+// host_common in later commits; the extern goes away with them.
+#include "display_box.h"
+using display_lgfx_box::tft;
 
-
-// Screen grid + cursor state + color caches now live in the shared
-// host_common component (ti-emulator/components/host_common). Same
-// import pattern as the palette below — `extern` in the header, one
-// definition in ti_host_screen.cpp.
 #include "ti_host.h"
 using tihost::tiPalette;
 using tihost::charFgIdx;
@@ -532,39 +530,13 @@ using tihost::cursorCol;
 using tihost::cursorRow;
 using tihost::fgColor;
 using tihost::bgColor;
-// drawCell / refreshScreen / redrawScreen are now shared too — one
-// implementation in ti_host_render.cpp that scales the 8x8 ROM font
-// to cfg.char_w x cfg.char_h and pushes the resulting pixel buffer
-// through the TiDisplay hooks we register below in initDisplay().
 using tihost::drawCell;
 using tihost::refreshScreen;
 using tihost::redrawScreen;
 
-// TiDisplay hook wrappers. The shared render code calls these instead
-// of touching LovyanGFX directly. Each is a thin one-liner around the
-// module-level `tft` — the whole `tft.pushImage / fillRect / drawPixel`
-// API stays private to this file.
-static void hostPushCell_impl(int px, int py, int w, int h,
-                              const uint16_t* pixels)
-{
-  tft.pushImage(px, py, w, h, pixels);
-}
-static void hostFillRect_impl(int px, int py, int w, int h, uint16_t color)
-{
-  tft.fillRect(px, py, w, h, color);
-}
-static void hostPutPixel_impl(int px, int py, uint16_t color)
-{
-  tft.drawPixel(px, py, color);
-}
-static void hostFillScreen_impl(uint16_t color)
-{
-  tft.fillScreen(color);
-}
-static void hostFlush_impl() { /* LovyanGFX is direct-to-panel; no-op */ }
-
-// Forward declarations for hooks defined below in main.cpp — needed so
-// the TiDisplay struct initializer in setup() can name them.
+// Forward declarations for feature hooks — panel-independent, so they
+// stay per-host (spriteRedrawAll uses box's sprite state; hostHonk
+// uses box's audio codec; hostReadBleKey uses box's BLE keyboard).
 static void spriteRedrawAll();     // defined ~line 2871
 static void hostPostScroll_impl() { spriteRedrawAll(); }
 // TI-authentic HONK — short 220 Hz buzz. tiSoundPlay comes from
@@ -572,22 +544,6 @@ static void hostPostScroll_impl() { spriteRedrawAll(); }
 static void hostHonk_impl()
 {
   tiSoundPlay(200, 220, 0, 0, 30, 0, 30, 0, 30);
-}
-// Box's fillBackground is just a whole-panel fill to bg, since there
-// is no distinct border area on the 320x240 display.
-static void hostFillBackground_impl(uint16_t bg) { tft.fillScreen(bg); }
-
-static void initDisplay()
-{
-  tft.init();
-  tft.setRotation(1);            // landscape, USB on the right
-  tft.setColorDepth(16);
-  tft.setSwapBytes(true);        // pushImage data is little-endian uint16_t;
-                                 // panel wants big-endian RGB565.
-  tft.setBrightness(192);        // 0..255 backlight PWM duty
-  tft.fillScreen(bgColor);
-  tft.setTextSize(1);
-  tft.setTextColor(fgColor, bgColor);
 }
 
 // resolveColor moved to host_common — see ti_host.h `using` above.
@@ -3846,39 +3802,24 @@ void setup()
   // SDMMC VFS mount even though the card itself stays present. Running
   // SD_MMC.begin() afterward avoids the rescue dance entirely.
 
-  initDisplay();
-
-  // Register box's geometry + display hooks with host_common. Everything
-  // in ti-emulator/components/host_common that draws (drawCell,
-  // refreshScreen, redrawScreen, and eventually scrollUp/tiPrint family)
-  // dispatches through the TiDisplay pointers set here.
+  // Panel driver + geometry + panel-side hooks come from the
+  // display_lgfx_box component; feature flags + feature hooks (audio
+  // honk, sprite redraw, BLE key read, pairing UI) are per-host and
+  // filled in here on top of what init() set.
   {
     tihost::TiHostConfig cfg = {};
-    cfg.cols             = COLS;
-    cfg.rows             = ROWS;
-    cfg.char_w           = CHAR_W;
-    cfg.char_h           = CHAR_H;
-    cfg.screen_w         = SCREEN_W;
-    cfg.screen_h         = SCREEN_H;
-    cfg.display_x_offset = DISPLAY_X_OFFSET;
-    cfg.display_y_offset = DISPLAY_Y_OFFSET;
-    cfg.has_audio        = true;
-    cfg.has_ble_kb       = true;
-    cfg.has_wifi         = true;
-    cfg.has_pairing_ui   = true;
+    tihost::TiDisplay    display = {};
+    display_lgfx_box::init(cfg, display);
 
-    tihost::TiDisplay display = {};
-    display.hostBegin      = nullptr;
-    display.hostPushCell   = hostPushCell_impl;
-    display.hostFillRect   = hostFillRect_impl;
-    display.hostPutPixel   = hostPutPixel_impl;
-    display.hostFillScreen = hostFillScreen_impl;
-    display.hostFlush      = hostFlush_impl;
-    display.hostPaintBorder    = nullptr;   // box has no TI-style border
-    display.hostHonk           = hostHonk_impl;
-    display.hostPostScroll     = hostPostScroll_impl;
-    display.hostFillBackground = hostFillBackground_impl;
-    display.hostReadBleKey     = hostReadBleKey_impl;
+    cfg.has_audio      = true;
+    cfg.has_ble_kb     = true;
+    cfg.has_wifi       = true;
+    cfg.has_pairing_ui = true;
+
+    display.hostPaintBorder = nullptr;   // box has no TI-style border
+    display.hostHonk        = hostHonk_impl;
+    display.hostPostScroll  = hostPostScroll_impl;
+    display.hostReadBleKey  = hostReadBleKey_impl;
 
     tihost::hostCommonInit(cfg, display);
 
