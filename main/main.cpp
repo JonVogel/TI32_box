@@ -564,6 +564,20 @@ static void hostFillScreen_impl(uint16_t color)
 }
 static void hostFlush_impl() { /* LovyanGFX is direct-to-panel; no-op */ }
 
+// Forward declarations for hooks defined below in main.cpp — needed so
+// the TiDisplay struct initializer in setup() can name them.
+static void spriteRedrawAll();     // defined ~line 2871
+static void hostPostScroll_impl() { spriteRedrawAll(); }
+// TI-authentic HONK — short 220 Hz buzz. tiSoundPlay comes from
+// audio.cpp (declared via audio.h at the top of the file).
+static void hostHonk_impl()
+{
+  tiSoundPlay(200, 220, 0, 0, 30, 0, 30, 0, 30);
+}
+// Box's fillBackground is just a whole-panel fill to bg, since there
+// is no distinct border area on the 320x240 display.
+static void hostFillBackground_impl(uint16_t bg) { tft.fillScreen(bg); }
+
 static void initDisplay()
 {
   tft.init();
@@ -585,15 +599,10 @@ static void initDisplay()
 // native scale on box the whole grid renders in ~40 ms, well under the
 // 5 s watchdog, so the yield isn't structurally needed.
 
-static void scrollUp()
-{
-  memcpy(&screenBuf[0][0], &screenBuf[1][0], COLS * (ROWS - 1));
-  memset(&screenBuf[ROWS - 1][0], 0x20, COLS);
-  refreshScreen();
-  spriteRedrawAll();    // sprites sit on top of the char grid
-  int y = (ROWS - 1) * CHAR_H + DISPLAY_Y_OFFSET;
-  tft.fillRect(DISPLAY_X_OFFSET, y, COLS * CHAR_W, CHAR_H, bgColor);
-}
+// scrollUp moved to host_common (see `using tihost::scrollUp` below).
+// hostPostScroll_impl calls box's spriteRedrawAll() so sprites stay on
+// top of the freshly-scrolled char grid.
+using tihost::scrollUp;
 
 // Host strong override of ti_platform.h's weak tiYield().
 //
@@ -620,73 +629,16 @@ void tiYield()
   delay(1);
 }
 
-void tiPrintChar(char c)
-{
-  // Mirror output to serial terminal for copy/paste
-  Serial.write(c);
-  if (c == '\n')
-  {
-    Serial.write('\r');
-  }
-
-  // TI behavior: cursor always on bottom row (ROWS-1 = 23).
-  // '\n' scrolls up one row and resets column to 0.
-  if (c == '\n')
-  {
-    scrollUp();
-    cursorRow = ROWS - 1;
-    cursorCol = 0;
-    return;
-  }
-
-  // Column wrap — scroll up and start fresh at col 0
-  if (cursorCol >= COLS)
-  {
-    scrollUp();
-    cursorRow = ROWS - 1;
-    cursorCol = 0;
-  }
-
-  screenBuf[cursorRow][cursorCol] = c;
-  drawCell(cursorCol, cursorRow);
-  prevScreenBuf[cursorRow][cursorCol] = c;
-  cursorCol++;
-}
-
-void tiPrintString(const char* str)
-{
-  while (*str)
-  {
-    tiPrintChar(*str++);
-  }
-}
-
-static void printLine(const char* str)
-{
-  tiPrintString(str);
-  tiPrintChar('\n');
-}
-
-// TI-style error print: blank line, error message, blank line, plus a
-// BEL (0x07) to the serial terminal so monitors that honor it beep.
-static void printError(const char* str)
-{
-  printLine("");
-  printLine(str);
-  printLine("");
-  Serial.write(0x07);
-  // TI-authentic "HONK" — short 220 Hz buzz on any error.
-  tiSoundPlay(200, 220, 0, 0, 30, 0, 30, 0, 30);
-}
-
-void tiClearScreen()
-{
-  memset(screenBuf, ' ', COLS * ROWS);
-  fillBackground(bgColor);
-  // TI behavior: cursor on bottom row after CLEAR
-  cursorCol = 0;
-  cursorRow = ROWS - 1;
-}
+// tiPrintChar / tiPrintString / tiClearScreen moved to host_common but
+// live at global scope there (they're strong overrides of ti_platform.h
+// weak symbols — namespacing them would leave the interpreter's link
+// against `void tiPrintChar(char)` unresolved). Nothing to `using` here;
+// the linker picks up host_common's implementations directly.
+//
+// printLine / printError ARE namespaced (host_common-internal helpers)
+// so pull them into global scope for the ~80 call sites in this file.
+using tihost::printLine;
+using tihost::printError;
 
 // Move cursor to bottom row for INPUT (TI behavior — INPUT always at row 24).
 // With the new print model, we just need to ensure we're at col 0.
@@ -4197,8 +4149,10 @@ void setup()
     display.hostPutPixel   = hostPutPixel_impl;
     display.hostFillScreen = hostFillScreen_impl;
     display.hostFlush      = hostFlush_impl;
-    display.hostPaintBorder = nullptr;   // box has no TI-style border
-    display.hostHonk       = nullptr;    // hooked later from initAudio path
+    display.hostPaintBorder    = nullptr;   // box has no TI-style border
+    display.hostHonk           = hostHonk_impl;
+    display.hostPostScroll     = hostPostScroll_impl;
+    display.hostFillBackground = hostFillBackground_impl;
 
     tihost::hostCommonInit(cfg, display);
   }
