@@ -797,99 +797,29 @@ static void fillBackground(uint16_t bg)
 // below still calls the box-local drawCell — hence stays here for now.
 using tihost::tiLogoChars;
 
-// Redefine char codes 129..137 with the logo patterns and place them in
-// a 3×3 grid on screen with the top-left at (startRow, startCol).
-static void drawTexasLogo(int startRow, int startCol)
-{
-  for (int i = 0; i < 9; i++)
-  {
-    memcpy(charPatterns[129 + i], tiLogoChars[i], 8);
-  }
-  for (int r = 0; r < 3; r++)
-  {
-    for (int c = 0; c < 3; c++)
-    {
-      int ch = 129 + r * 3 + c;
-      screenBuf[startRow + r][startCol + c] = (char)ch;
-      drawCell(startCol + c, startRow + r);
-    }
-  }
-}
+// drawTexasLogo moved to host_common (called by paintBootPage1).
+using tihost::drawTexasLogo;
+using tihost::paintBootPage1;
+using tihost::paintBootPage2;
 
 // copyrightBitmap now lives in host_common (see ti_host.h).
 using tihost::copyrightBitmap;
 
 // TI-99/4A boot screen: colored stripes top and bottom, centered text.
 // Pattern approximates the 1981 TI home computer startup screen.
+// The paint routine itself lives in host_common's paintBootPage1() —
+// this function is just box-specific glue: aggressive BLE scan on
+// entry, pairing-UI takeover during the wait, key-acknowledge beep,
+// and the same for page 2 (menu screen).
 static void showBootScreen()
 {
   // While the splash is up, run BLE scan in aggressive TITLE mode so a
   // keyboard the user just powered on connects within a second or two.
   // The setup() flow (and the recursive re-show paths below) flip back
   // to INTERACTIVE after this function returns; nested re-entries
-  // re-arm TITLE on each entry, which is the desired behavior.
+  // re-arm TITLE on each entry.
   bleKbSetMode(BLE_KB_TITLE);
-
-  // Clear display to cyan in the char area, black outside
-  fillBackground(tiPalette[8]);
-
-  // Redefine char 128 as the © copyright symbol
-  memcpy(charPatterns[128], copyrightBitmap, 8);
-
-  // Stripe colors (approximating the TI pattern left to right)
-  const uint8_t stripes[] = {
-    9, 4, 2, 12, 13, 14,        // left group
-    5, 3, 14, 9, 15, 6, 10, 12, 9   // right group
-  };
-  const int numStripes = sizeof(stripes);
-
-  // Top and bottom colored bars: 15 stripes + 1 gap = 16 slots spanning
-  // the full character-area width.
-  const int stripeW = (COLS * CHAR_W) / 16;
-  const int stripeH = 24;        // 3 rows × 8px
-  const int gapEnd  = 7 * stripeW;   // gap occupies slot 6 (after 6 stripes)
-
-  // Top band — TI rows 1-3
-  int topY = DISPLAY_Y_OFFSET;
-  for (int i = 0; i < numStripes; i++)
-  {
-    int x = DISPLAY_X_OFFSET +
-            ((i < 6) ? i * stripeW : (i - 6) * stripeW + gapEnd);
-    tft.fillRect(x, topY, stripeW, stripeH, tiPalette[stripes[i]]);
-  }
-
-  // Bottom band — TI rows 19-21 (0-indexed 18-20)
-  int bottomY = DISPLAY_Y_OFFSET + 18 * CHAR_H;
-  for (int i = 0; i < numStripes; i++)
-  {
-    int x = DISPLAY_X_OFFSET +
-            ((i < 6) ? i * stripeW : (i - 6) * stripeW + gapEnd);
-    tft.fillRect(x, bottomY, stripeW, stripeH, tiPalette[stripes[i]]);
-  }
-
-  // Draw centered text directly via the framebuffer.
-  // Our display is 28 cols; "TEXAS INSTRUMENTS" (17) → col 5 start.
-  auto drawText = [](const char* text, int row) {
-    int len = strlen(text);
-    int col = (COLS - len) / 2;
-    if (col < 0) col = 0;
-    for (int i = 0; i < len && col + i < COLS; i++)
-    {
-      screenBuf[row][col + i] = text[i];
-      drawCell(col + i, row);
-    }
-  };
-
-  // Texas logo — 3×3 char grid at TI rows 6-8 (0-indexed 5-7)
-  drawTexasLogo(5, (COLS - 3) / 2);
-
-  drawText("TEXAS INSTRUMENTS",             9);   // TI row 10
-  drawText("HOME COMPUTER",                11);   // TI row 12
-  drawText("READY-PRESS ANY KEY TO BEGIN", 16);   // TI row 17
-  drawText("\x80" "1981    TEXAS INSTRUMENTS", 22);   // TI row 23 with ©
-  drawText("TI32 " TI32_VERSION,                23);   // TI row 24 — emulator build tag
-
-  Serial.println("PRESS ANY KEY TO CONTINUE");
+  paintBootPage1();
 
   // Wait for any key — from Serial or BLE keyboard. Keep BLE scanning
   // alive so reconnect can complete while we're sitting here.
@@ -946,30 +876,7 @@ static void showBootScreen()
   // TI-authentic key-acknowledge beep: F6 (1397 Hz) for 166 ms.
   tiSoundPlay(166, 1397, 0, 0, 30, 0, 30, 0, 30);
 
-  // Clear and show the menu screen
-  fillBackground(tiPalette[8]);
-  for (int r = 0; r < ROWS; r++)
-  {
-    memset(screenBuf[r], ' ', COLS);
-    memset(prevScreenBuf[r], 0, COLS);
-  }
-
-  auto drawText2 = [](const char* text, int row, int col) {
-    int len = strlen(text);
-    for (int i = 0; i < len && col + i < COLS; i++)
-    {
-      screenBuf[row][col + i] = text[i];
-      drawCell(col + i, row);
-    }
-  };
-
-  drawText2("TEXAS INSTRUMENTS",     0, 5);
-  drawText2("HOME COMPUTER",         1, 7);
-  drawText2("PRESS",                 3, 2);
-  drawText2("1 FOR TI BASIC",        5, 2);
-  drawText2("2 FOR TI EXTENDED BASIC", 7, 2);
-
-  Serial.println("PRESS 1 OR 2 TO CONTINUE");
+  paintBootPage2();
 
   // Wait for any key — from Serial or BLE keyboard. Keep BLE scanning
   // alive so reconnect can complete while we're sitting here. Also
