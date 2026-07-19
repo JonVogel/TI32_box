@@ -1094,9 +1094,13 @@ static ExecManager em;
 // kept in the buffer and submitted intact on Enter.
 // ---------------------------------------------------------------------------
 
-static char inputBuf[MAX_INPUT_LEN + 1];
-static int  inputPos = 0;          // len of input so far (for main loop)
-static bool inputReady = false;
+// inputBuf / inputPos / inputReady are the editor→main-loop handoff
+// interface. Moved to host_common along with the editor loop; using
+// them here just re-imports the names for main.cpp's if (inputReady)
+// { processInput(inputBuf); ... } check.
+using tihost::inputBuf;
+using tihost::inputPos;
+using tihost::inputReady;
 
 // Editor state + buffer/cursor primitives + REDO buffer + NUMBER-mode
 // state all moved to host_common (ti_host_editor.cpp). processEditChar
@@ -1156,6 +1160,10 @@ static int hostReadBleKey_impl()
   if (bleKbAvailable()) return bleKbRead();
   return -1;
 }
+// hostKbTask wrapper — pumps the BLE HID stack. Called by
+// host_common's getInputLine every blink so BLE keys stay responsive
+// while INPUT / LINPUT are blocking on user entry.
+static void hostKbTask_impl() { bleKbTask(); }
 
 // TiInterpreterHooks implementations. These stay per-host because they
 // call em (the local ExecManager instance) + tokenizeLine +
@@ -1231,133 +1239,14 @@ using tihost::editEraseLine;
 // / programSize), so nothing box-specific remains in the keybind
 // dispatch.
 
-static bool getInputLine(char* buf, int bufSize)
-{
-  LineEdit s = { buf, bufSize - 1, 0, 0, cursorCol, cursorRow, false };
-  buf[0] = '\0';
-
-  bool cursorVisible = false;
-  unsigned long lastBlink = 0;
-  const unsigned long BLINK_MS = 400;
-
-  while (true)
-  {
-    unsigned long now = millis();
-    if (now - lastBlink >= BLINK_MS)
-    {
-      cursorVisible = !cursorVisible;
-      editSyncCursor(s);
-      drawCursor(cursorVisible);
-      lastBlink = now;
-    }
-
-    bleKbTask();
-    webfiles::tick();
-
-    int c;
-    while ((c = editorReadChar()) >= 0)
-    {
-      if (cursorVisible)
-      {
-        editSyncCursor(s);
-        drawCursor(false);
-        cursorVisible = false;
-      }
-
-      EditResult r = processEditChar((uint8_t)c, s);
-      if (r == EDIT_SUBMITTED) return true;
-      if (r == EDIT_BROKEN)    return false;   // INPUT aborted
-    }
-    yield();
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Editor prompt (non-blocking, called from loop)
-// ---------------------------------------------------------------------------
-static bool editorCursorVisible = false;
-static unsigned long editorLastBlink = 0;
-static const unsigned long EDITOR_BLINK_MS = 400;
-
-static LineEdit editorState = { inputBuf, MAX_INPUT_LEN, 0, 0, 0, 0, true };
-static bool editorLineActive = false;   // true between start-of-line and Enter
-
-static void editorBeginLine()
-{
-  editorState.buf = inputBuf;
-  editorState.maxLen = MAX_INPUT_LEN;
-  editorState.len = 0;
-  editorState.pos = 0;
-  editorState.startCol = cursorCol;
-  editorState.startRow = cursorRow;
-  editorState.historyEnabled = true;
-  inputBuf[0] = '\0';
-  inputPos = 0;
-  editorLineActive = true;
-
-  // NUMBER mode: pre-fill with the next auto line number + space
-  if (numModeActive)
-  {
-    char numStr[8];
-    int n = snprintf(numStr, sizeof(numStr), "%d ", numModeNext);
-    for (int i = 0; i < n; i++)
-    {
-      editTypeChar(editorState, (uint8_t)numStr[i]);
-    }
-    numModeNext += numModeIncr;
-  }
-}
-
-// editorBufferIsAutoFillOnly moved to host_common — see `using` block above.
-
-static void editorCursorTick()
-{
-  if (!editorLineActive) return;
-  unsigned long now = millis();
-  if (now - editorLastBlink >= EDITOR_BLINK_MS)
-  {
-    editorCursorVisible = !editorCursorVisible;
-    editSyncCursor(editorState);
-    drawCursor(editorCursorVisible);
-    editorLastBlink = now;
-  }
-}
-
-static void checkInput()
-{
-  if (!editorLineActive)
-  {
-    editorBeginLine();
-  }
-
-  editorCursorTick();
-
-  int c;
-  while ((c = editorReadChar()) >= 0)
-  {
-    if (editorCursorVisible)
-    {
-      editSyncCursor(editorState);
-      drawCursor(false);
-      editorCursorVisible = false;
-    }
-
-    EditResult r = processEditChar((uint8_t)c, editorState);
-    inputPos = editorState.len;
-
-    if (r == EDIT_SUBMITTED)
-    {
-      inputReady = true;
-      editorLineActive = false;
-      return;
-    }
-    if (r == EDIT_BROKEN)
-    {
-      // No running program at the prompt — CLEAR just stays where it is
-      continue;
-    }
-  }
-}
+// getInputLine / checkInput / editorBeginLine / editorCursorTick all
+// moved to host_common — they call editorReadChar (drains paste ring +
+// dispatches to hostReadBleKey) + processEditChar via shared code,
+// and pump BLE via display.hostKbTask on hosts that provide it.
+using tihost::getInputLine;
+using tihost::checkInput;
+using tihost::editorBeginLine;
+using tihost::editorCursorTick;
 
 // ---------------------------------------------------------------------------
 // Forward declaration for recursive use by cmdOld
@@ -3628,6 +3517,7 @@ void setup()
     display.hostHonk        = hostHonk_impl;
     display.hostPostScroll  = hostPostScroll_impl;
     display.hostReadBleKey  = hostReadBleKey_impl;
+    display.hostKbTask      = hostKbTask_impl;
 
     tihost::hostCommonInit(cfg, display);
 
