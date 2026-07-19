@@ -1098,11 +1098,11 @@ static char inputBuf[MAX_INPUT_LEN + 1];
 static int  inputPos = 0;          // len of input so far (for main loop)
 static bool inputReady = false;
 
-static char lastCommandLine[MAX_INPUT_LEN + 1] = {0};
-// Editor state + buffer/cursor primitives moved to host_common
-// (ti_host_editor.cpp). processEditChar / getInputLine / checkInput
-// still live below because they touch em (interpreter) and box's own
-// BLE keyboard driver.
+// Editor state + buffer/cursor primitives + REDO buffer + NUMBER-mode
+// state all moved to host_common (ti_host_editor.cpp). processEditChar
+// is shared too now. getInputLine / checkInput / editorBeginLine
+// still live in this file because they touch box's BLE keyboard
+// driver and audio codec.
 using tihost::editInsertMode;
 using tihost::editMode;
 using tihost::lastRecalledLineNum;
@@ -1110,14 +1110,12 @@ using tihost::drawCursor;
 using tihost::editPosToRC;
 using tihost::editSyncCursor;
 using tihost::redrawLineTail;
-
-// NUMBER mode: when active, editorBeginLine pre-fills the prompt with the
-// next auto-incrementing line number. Set by cmdNumber(); cleared when the
-// user presses Enter on an empty line.
-static int  numModeStart  = 0;
-static int  numModeIncr   = 0;
-static int  numModeNext   = 0;
-static bool numModeActive = false;
+using tihost::lastCommandLine;
+using tihost::numModeStart;
+using tihost::numModeIncr;
+using tihost::numModeNext;
+using tihost::numModeActive;
+using tihost::processEditChar;
 
 // Forward decls (needed by line-number recall and UP/DOWN commit)
 static int detokenizeLine(const uint8_t* tokens, int length, char* buf,
@@ -1227,201 +1225,11 @@ using tihost::editBackspace;
 using tihost::editTypeChar;
 using tihost::editEraseLine;
 
-static EditResult processEditChar(uint8_t c, LineEdit& s)
-{
-  // ----- handled identically in both modes -----
-
-  // Enter: commit line. Only match '\r' — '\n' (10) is DOWN on TI.
-  // Serial's '\n' is normalized to '\r' at the read site.
-  if (c == '\r')
-  {
-    // NUMBER mode: if user pressed Enter without adding anything past the
-    // auto-fill, exit NUMBER mode and throw away the buffer so we don't
-    // accidentally delete the line with that number.
-    if (numModeActive && s.historyEnabled && editorBufferIsAutoFillOnly(s))
-    {
-      numModeActive = false;
-      s.len = 0;
-      s.pos = 0;
-      s.buf[0] = '\0';
-    }
-    s.buf[s.len] = '\0';
-    if (s.historyEnabled)
-    {
-      strncpy(lastCommandLine, s.buf, sizeof(lastCommandLine) - 1);
-      lastCommandLine[sizeof(lastCommandLine) - 1] = '\0';
-    }
-    // Position cursor at end of line BEFORE the \n. With soft-wrap,
-    // the last visible cell may be on a row below s.startRow.
-    {
-      int erow, ecol;
-      editPosToRC(s, s.len, erow, ecol);
-      if (erow < 0) erow = 0;
-      if (erow >= ROWS) erow = ROWS - 1;
-      cursorRow = erow;
-      cursorCol = ecol;
-    }
-    tiPrintChar('\n');
-    editMode = EM_ENTRY;
-    lastRecalledLineNum = -1;
-    return EDIT_SUBMITTED;
-  }
-
-  // CLEAR — break
-  if (c == 12) return EDIT_BROKEN;
-
-  // ERASE (FCTN+3) — wipe line in either mode, drop back to ENTRY
-  if (c == 2)
-  {
-    editEraseLine(s);
-    return EDIT_CONTINUE;
-  }
-
-  // INS (FCTN+2) — toggle insert mode (global flag, both edit modes)
-  if (c == 4)
-  {
-    editInsertMode = !editInsertMode;
-    return EDIT_CONTINUE;
-  }
-
-  // REDO (FCTN+8) — reload last-entered line, flip to EDIT
-  if (c == 14)
-  {
-    if (s.historyEnabled && lastCommandLine[0] != '\0')
-    {
-      editReplaceLine(s, lastCommandLine);
-      editMode = EM_EDIT;
-    }
-    return EDIT_CONTINUE;
-  }
-
-  // BKSP (127) — delete previous char. Works in both modes since cursor
-  // naturally sits at end during ENTRY.
-  if (c == 127)
-  {
-    editBackspace(s);
-    return EDIT_CONTINUE;
-  }
-
-  // Printable — typing always feeds the buffer
-  if (c >= 32 && c < 127)
-  {
-    editTypeChar(s, c);
-    return EDIT_CONTINUE;
-  }
-
-  // ----- Cursor movement & DEL work in every edit context -----
-
-  // LEFT (8, FCTN+S) — cursor left
-  if (c == 8)
-  {
-    if (s.pos > 0) { s.pos--; editSyncCursor(s); }
-    return EDIT_CONTINUE;
-  }
-
-  // RIGHT (9, FCTN+D) — cursor right
-  if (c == 9)
-  {
-    if (s.pos < s.len) { s.pos++; editSyncCursor(s); }
-    return EDIT_CONTINUE;
-  }
-
-  // DEL (7, FCTN+1) — delete char at cursor
-  if (c == 7)
-  {
-    editDeleteAtCursor(s);
-    return EDIT_CONTINUE;
-  }
-
-  // ----- UP/DOWN are mode-aware -----
-  //
-  //   INPUT (historyEnabled=false): no-op
-  //   ENTRY (editor prompt, not yet recalled): if the buffer is all digits,
-  //     jump to EDIT mode on that program line
-  //   EDIT  (a line is currently under edit): commit the current buffer,
-  //     then move to the previous/next program line; past the boundary
-  //     exits EDIT mode
-
-  if (c == 11)   // UP (FCTN+E)
-  {
-    if (!s.historyEnabled) return EDIT_CONTINUE;
-
-    if (editMode == EM_ENTRY)
-    {
-      if (editBufferIsAllDigits(s))
-      {
-        int idx = findProgramLineIndex(atoi(s.buf));
-        if (idx >= 0) loadProgramLineToEdit(s, idx);
-      }
-      return EDIT_CONTINUE;
-    }
-
-    // EM_EDIT — commit and navigate to previous line
-    int oldLine = lastRecalledLineNum;
-    if (!commitEditedLine(s))
-    {
-      printError("* SYNTAX ERROR");
-      editEraseLine(s);
-      return EDIT_CONTINUE;
-    }
-    int idx = findProgramLineIndex(oldLine);
-    if (idx < 0) { editEraseLine(s); return EDIT_CONTINUE; }
-    if (idx > 0)
-    {
-      tiPrintChar('\n');
-      s.startCol = cursorCol;
-      s.startRow = cursorRow;
-      s.len = 0; s.pos = 0; s.buf[0] = '\0';
-      loadProgramLineToEdit(s, idx - 1);
-    }
-    else
-    {
-      editEraseLine(s);
-    }
-    return EDIT_CONTINUE;
-  }
-
-  if (c == 10)   // DOWN (FCTN+X)
-  {
-    if (!s.historyEnabled) return EDIT_CONTINUE;
-
-    if (editMode == EM_ENTRY)
-    {
-      if (editBufferIsAllDigits(s))
-      {
-        int idx = findProgramLineIndex(atoi(s.buf));
-        if (idx >= 0) loadProgramLineToEdit(s, idx);
-      }
-      return EDIT_CONTINUE;
-    }
-
-    // EM_EDIT — commit and navigate to next line
-    int oldLine = lastRecalledLineNum;
-    if (!commitEditedLine(s))
-    {
-      printError("* SYNTAX ERROR");
-      editEraseLine(s);
-      return EDIT_CONTINUE;
-    }
-    int idx = findProgramLineIndex(oldLine);
-    if (idx < 0) { editEraseLine(s); return EDIT_CONTINUE; }
-    if (idx < em.programSize() - 1)
-    {
-      tiPrintChar('\n');
-      s.startCol = cursorCol;
-      s.startRow = cursorRow;
-      s.len = 0; s.pos = 0; s.buf[0] = '\0';
-      loadProgramLineToEdit(s, idx + 1);
-    }
-    else
-    {
-      editEraseLine(s);
-    }
-    return EDIT_CONTINUE;
-  }
-
-  return EDIT_CONTINUE;
-}
+// processEditChar moved to host_common — see `using tihost::processEditChar`
+// above. Uses the shared editor primitives + registered interpreter
+// hooks (findProgramLineIndex / commitEditedLine / loadProgramLineToEdit
+// / programSize), so nothing box-specific remains in the keybind
+// dispatch.
 
 static bool getInputLine(char* buf, int bufSize)
 {
